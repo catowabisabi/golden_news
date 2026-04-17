@@ -1,0 +1,25 @@
+{
+  "_comment": "Fill in your API keys here. Leave empty if you don't have the key.",
+  "_note": "For production, encrypt these values!",
+
+  "openai": "",
+  "minimax_chat": "***REMOVED***",
+  "minimax_tts": "***REMOVED***",
+  "newsapi": "",
+  "mediastack": "",
+  "bing_search": "",
+  "twitter_bearer": "",
+  "twitter_api_key": "",
+  "twitter_api_secret": "",
+  "reuters": "",
+  "bloomberg": "",
+  "finnhub": "",
+  "alphavantage": "",
+  "newsdata": "",
+  "cryptonews": "",
+  "benzinga": "",
+  "oilprice": "",
+  "commodities_api": "",
+  "metals_api": "",
+  "polygon_io": ""
+}
