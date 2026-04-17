@@ -1,0 +1,684 @@
+# Golden News Dashboard - Standalone HTML with D3.js
+# This file can be opened directly in a browser
+# It connects to the WebSocket server at ws://localhost:8765
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Golden News - Real-Time News Intelligence</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0a0e17;
+            --card: #1a1f2e;
+            --gold: #ffd700;
+            --cyan: #00d4ff;
+            --green: #00ff88;
+            --red: #ff4757;
+            --text: #e0e0e0;
+            --muted: #6b7280;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            background: var(--card);
+            border-bottom: 1px solid rgba(255, 215, 0, 0.15);
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--gold);
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 12px;
+        }
+
+        .live-dot {
+            width: 8px; height: 8px;
+            background: var(--green);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Main Layout */
+        .main {
+            display: flex;
+            height: calc(100vh - 80px);
+        }
+
+        /* Left: Graph */
+        .graph-panel {
+            flex: 1.5;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .graph-container {
+            flex: 1;
+            background: var(--card);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #graph {
+            width: 100%;
+            height: 100%;
+        }
+
+        .node {
+            cursor: pointer;
+        }
+
+        .node circle {
+            transition: all 0.3s ease;
+        }
+
+        .node:hover circle {
+            stroke: var(--gold);
+            stroke-width: 3px;
+        }
+
+        .node text {
+            font-size: 9px;
+            fill: var(--muted);
+            pointer-events: none;
+        }
+
+        .link {
+            stroke: rgba(255, 215, 0, 0.2);
+            stroke-width: 1px;
+        }
+
+        .link.strong {
+            stroke: rgba(255, 215, 0, 0.5);
+            stroke-width: 2px;
+        }
+
+        /* Right: Sidebar */
+        .sidebar {
+            width: 420px;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Signal Cards */
+        .signals-section {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .signal-card {
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 10px;
+            border-left: 3px solid var(--muted);
+        }
+
+        .signal-card.long { border-left-color: var(--green); }
+        .signal-card.short { border-left-color: var(--red); }
+        .signal-card.neutral { border-left-color: var(--muted); }
+
+        .signal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .signal-direction {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .signal-direction.long { color: var(--green); }
+        .signal-direction.short { color: var(--red); }
+        .signal-direction.neutral { color: var(--muted); }
+
+        .signal-asset {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .signal-confidence {
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        .signal-headline {
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text);
+        }
+
+        .signal-meta {
+            font-size: 10px;
+            color: var(--muted);
+            margin-top: 6px;
+        }
+
+        /* Articles List */
+        .articles-section {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 20px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .article-item {
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .article-title {
+            font-size: 12px;
+            line-height: 1.4;
+            color: var(--text);
+            margin-bottom: 6px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .article-meta {
+            font-size: 10px;
+            color: var(--muted);
+            display: flex;
+            gap: 10px;
+        }
+
+        .article-source { color: var(--gold); }
+        .article-sentiment.positive { color: var(--green); }
+        .article-sentiment.negative { color: var(--red); }
+        .article-sentiment.neutral { color: var(--muted); }
+
+        /* Tooltip */
+        .tooltip {
+            position: absolute;
+            background: var(--card);
+            border: 1px solid var(--gold);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 12px;
+            max-width: 300px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .tooltip.visible { opacity: 1; }
+        .tooltip-title { font-weight: 600; margin-bottom: 6px; color: var(--text); }
+        .tooltip-meta { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+        .tooltip-keywords { font-size: 10px; color: var(--cyan); }
+
+        /* Legend */
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(26, 31, 46, 0.9);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 10px;
+        }
+
+        .legend-title {
+            color: var(--gold);
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .legend-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+        }
+
+        /* Controls */
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: var(--card);
+            border: 1px solid rgba(255,215,0,0.3);
+            border-radius: 6px;
+            color: var(--gold);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--gold);
+            color: var(--bg);
+        }
+
+        /* Empty state */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--muted);
+            font-size: 14px;
+            gap: 15px;
+        }
+
+        .empty-icon { font-size: 48px; opacity: 0.5; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">🏆 Golden News</div>
+        <div class="status">
+            <div class="live-dot"></div>
+            <span style="color: var(--green)">LIVE</span>
+            <span id="last-update" style="color: var(--muted)">Connecting...</span>
+            <span style="color: var(--muted); margin-left: 10px;">|</span>
+            <span id="article-count" style="color: var(--text)">0 articles</span>
+            <span style="color: var(--muted);">|</span>
+            <span id="signal-count" style="color: var(--gold)">0 signals</span>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="graph-panel">
+            <div class="panel-title">📊 News Relationship Graph</div>
+            <div class="graph-container">
+                <svg id="graph"></svg>
+                <div class="legend">
+                    <div class="legend-title">Sentiment</div>
+                    <div class="legend-item"><div class="legend-dot" style="background: var(--green)"></div> Positive</div>
+                    <div class="legend-item"><div class="legend-dot" style="background: var(--red)"></div> Negative</div>
+                    <div class="legend-item"><div class="legend-dot" style="background: var(--muted)"></div> Neutral</div>
+                    <div class="legend-title" style="margin-top: 12px">Lines</div>
+                    <div class="legend-item"><div class="legend-dot" style="background: transparent; border: 1px solid rgba(255,215,0,0.5)"></div> Shared keywords</div>
+                </div>
+                <div class="controls">
+                    <button class="btn" onclick="resetZoom()">Reset</button>
+                    <button class="btn" onclick="toggleLabels()">Labels</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="signals-section">
+                <div class="panel-title">⚡ Trading Signals</div>
+                <div id="signals-list">
+                    <div class="empty-state">
+                        <div class="empty-icon">⚡</div>
+                        <div>No signals yet</div>
+                        <div style="font-size: 11px">AI signals will appear here</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="articles-section">
+                <div class="panel-title">📰 Latest Articles</div>
+                <div id="articles-list">
+                    <div class="empty-state">
+                        <div class="empty-icon">📰</div>
+                        <div>No articles yet</div>
+                        <div style="font-size: 11px">Run collector.py to fetch news</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tooltip" id="tooltip">
+        <div class="tooltip-title" id="tt-title"></div>
+        <div class="tooltip-meta" id="tt-meta"></div>
+        <div class="tooltip-keywords" id="tt-keywords"></div>
+    </div>
+
+    <script>
+        // WebSocket connection
+        let ws;
+        let graphData = { nodes: [], edges: [], signals: [] };
+        let showLabels = true;
+        let simulation;
+
+        function connect() {
+            ws = new WebSocket('ws://localhost:8765');
+
+            ws.onopen = () => {
+                console.log('Connected to Golden News WebSocket');
+                document.getElementById('last-update').textContent = 'Connected';
+                ws.send(JSON.stringify({ command: 'get_latest', minutes: 60, limit: 50 }));
+                ws.send(JSON.stringify({ command: 'get_signals', limit: 10 }));
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'latest_articles') {
+                    updateFromArticles(msg.data);
+                } else if (msg.type === 'trading_signals') {
+                    updateSignals(msg.data);
+                } else if (msg.type === 'new_article') {
+                    addArticle(msg.data);
+                }
+            };
+
+            ws.onclose = () => {
+                document.getElementById('last-update').textContent = 'Disconnected - Reconnecting...';
+                setTimeout(connect, 3000);
+            };
+        }
+
+        function updateFromArticles(articles) {
+            // Build nodes and edges
+            const nodeMap = new Map();
+
+            articles.forEach((art, i) => {
+                if (!art.title) return;
+
+                // Extract keywords
+                const text = (art.title + ' ' + (art.summary || '')).toLowerCase();
+                const words = text.match(/\b\w{4,}\b/g) || [];
+                const stopWords = new Set(['that', 'this', 'with', 'from', 'have', 'been', 'were', 'they', 'what', 'when', 'where', 'which', 'about', 'would', 'could', 'your', 'more', 'than', 'after', 'also', 'into', 'some', 'will', 'their', 'there', 'would', 'could']);
+                const keywords = [...new Set(words.filter(w => !stopWords.has(w)))].slice(0, 8);
+
+                const sentiment = art.sentiment_label || 'neutral';
+                const colors = { positive: '#00ff88', negative: '#ff4757', neutral: '#6b7280' };
+                const size = art.is_trading_signal ? 16 : 8;
+
+                nodeMap.set(art.id, {
+                    id: art.id,
+                    title: art.title.length > 60 ? art.title.slice(0, 60) + '...' : art.title,
+                    fullTitle: art.title,
+                    url: art.url,
+                    source: art.source_name,
+                    sentiment: sentiment,
+                    color: colors[sentiment],
+                    size: size,
+                    isSignal: art.is_trading_signal,
+                    keywords: keywords,
+                    x: 400 + (Math.random() - 0.5) * 300,
+                    y: 300 + (Math.random() - 0.5) * 200
+                });
+            });
+
+            // Build edges
+            const edges = [];
+            const nodes = Array.from(nodeMap.values());
+
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const a = nodes[i];
+                    const b = nodes[j];
+                    const shared = a.keywords.filter(k => b.keywords.includes(k));
+                    if (shared.length >= 2) {
+                        edges.push({
+                            source: a.id,
+                            target: b.id,
+                            strength: Math.min(shared.length * 0.15, 0.8),
+                            shared: shared.slice(0, 3)
+                        });
+                    }
+                }
+            }
+
+            graphData.nodes = nodes;
+            graphData.edges = edges;
+
+            document.getElementById('article-count').textContent = `${nodes.length} articles`;
+            renderGraph();
+            renderArticles();
+        }
+
+        function updateSignals(signals) {
+            graphData.signals = signals;
+            document.getElementById('signal-count').textContent = `${signals.length} signals`;
+            renderSignals();
+        }
+
+        function addArticle(article) {
+            // Add to graph if new
+            const existing = graphData.nodes.find(n => n.id === article.id);
+            if (!existing && article.title) {
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+            }
+            ws.send(JSON.stringify({ command: 'get_latest', minutes: 30, limit: 30 }));
+        }
+
+        function renderGraph() {
+            const svg = d3.select('#graph');
+            const container = document.querySelector('.graph-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            svg.attr('width', width).attr('height', height);
+            svg.selectAll('*').remove();
+
+            if (graphData.nodes.length === 0) return;
+
+            // Create zoom
+            const zoom = d3.zoom()
+                .scaleExtent([0.2, 4])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+
+            svg.call(zoom);
+
+            const g = svg.append('g');
+
+            // Links
+            const links = g.append('g')
+                .selectAll('line')
+                .data(graphData.edges)
+                .enter()
+                .append('line')
+                .attr('class', d => 'link ' + (d.strength > 0.4 ? 'strong' : ''))
+                .attr('stroke', d => `rgba(255, 215, 0, ${d.strength})`)
+                .attr('stroke-width', d => d.strength * 2);
+
+            // Nodes
+            const nodes = g.append('g')
+                .selectAll('g')
+                .data(graphData.nodes)
+                .enter()
+                .append('g')
+                .attr('class', 'node')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+
+            nodes.append('circle')
+                .attr('r', d => d.size)
+                .attr('fill', d => d.color)
+                .attr('stroke', d => d.isSignal ? '#ffd700' : 'transparent')
+                .attr('stroke-width', d => d.isSignal ? 2 : 0);
+
+            nodes.append('text')
+                .text(d => showLabels ? d.source.slice(0, 10) : '')
+                .attr('dy', d => d.size + 12)
+                .attr('text-anchor', 'middle');
+
+            // Tooltip
+            const tooltip = document.getElementById('tooltip');
+
+            nodes.on('mouseover', (event, d) => {
+                document.getElementById('tt-title').textContent = d.fullTitle;
+                document.getElementById('tt-meta').textContent = `${d.source} | ${d.sentiment}`;
+                document.getElementById('tt-keywords').textContent = d.keywords.slice(0, 5).join(', ');
+                tooltip.classList.add('visible');
+                tooltip.style.left = (event.pageX + 15) + 'px';
+                tooltip.style.top = (event.pageY - 10) + 'px';
+            });
+
+            nodes.on('mouseout', () => {
+                tooltip.classList.remove('visible');
+            });
+
+            nodes.on('click', (event, d) => {
+                if (d.url) window.open(d.url, '_blank');
+            });
+
+            // Force simulation
+            simulation = d3.forceSimulation(graphData.nodes)
+                .force('link', d3.forceLink(graphData.edges)
+                    .id(d => d.id)
+                    .distance(d => 120 / d.strength))
+                .force('charge', d3.forceManyBody().strength(-200))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(d => d.size + 10))
+                .on('tick', () => {
+                    links
+                        .attr('x1', d => d.source.x)
+                        .attr('y1', d => d.source.y)
+                        .attr('x2', d => d.target.x)
+                        .attr('y2', d => d.target.y);
+
+                    nodes.attr('transform', d => {
+                        d.x = Math.max(20, Math.min(width - 20, d.x));
+                        d.y = Math.max(20, Math.min(height - 20, d.y));
+                        return `translate(${d.x},${d.y})`;
+                    });
+                });
+
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+
+        function renderSignals() {
+            const container = document.getElementById('signals-list');
+            if (graphData.signals.length === 0) return;
+
+            container.innerHTML = graphData.signals.map(sig => `
+                <div class="signal-card ${sig.direction}">
+                    <div class="signal-header">
+                        <span class="signal-direction ${sig.direction}">${sig.direction.toUpperCase()}</span>
+                        <span class="signal-asset">${sig.asset_class}</span>
+                        <span class="signal-confidence">${Math.round(sig.confidence * 100)}%</span>
+                    </div>
+                    <div class="signal-headline">${sig.headline}</div>
+                    <div class="signal-meta">${sig.source_name || ''} • ${sig.time_horizon || ''}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderArticles() {
+            const container = document.getElementById('articles-list');
+            if (graphData.nodes.length === 0) return;
+
+            container.innerHTML = graphData.nodes.slice(0, 20).map(node => `
+                <div class="article-item">
+                    <a href="${node.url || '#'}" target="_blank" style="text-decoration: none; color: inherit;">
+                        <div class="article-title">${node.fullTitle}</div>
+                        <div class="article-meta">
+                            <span class="article-source">${node.source}</span>
+                            <span class="article-sentiment ${node.sentiment}">${node.sentiment}</span>
+                        </div>
+                    </a>
+                </div>
+            `).join('');
+        }
+
+        function resetZoom() {
+            d3.select('#graph')
+                .transition()
+                .duration(500)
+                .call(d3.zoom().transform, d3.zoomIdentity);
+        }
+
+        function toggleLabels() {
+            showLabels = !showLabels;
+            d3.selectAll('.node text')
+                .text(d => showLabels ? d.source.slice(0, 10) : '');
+        }
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            if (graphData.nodes.length > 0) renderGraph();
+        });
+
+        // Connect on load
+        connect();
+    </script>
+</body>
+</html>

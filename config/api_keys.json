@@ -1,0 +1,25 @@
+{
+  "_comment": "Fill in your API keys here. Leave empty if you don't have the key.",
+  "_note": "For production, encrypt these values!",
+
+  "openai": "",
+  "minimax_chat": "sk-cp-ml_VCNXWSZDNxpnG6opNgsAvoyHgtuz7j8WNaA8NdEdwU2DP4Uzw19XhWLPRHmo1U6Unc9u1vHwqHFGNr94bPZ7ZC7OEDMrPRHpSFiZGNW2otUywqgTta4A",
+  "minimax_tts": "sk-api-CjTWbx73wcxRIVeNaBbwpWpc7Dyxlu8bYKGRYYhllzNNQ5U8avo6h3uVY7PmG7_v9oajz4gOLZ6qovLbZIZO0sH-DhlcOIdxiiARpSPEVQIvZgYiVLJEjd0",
+  "newsapi": "",
+  "mediastack": "",
+  "bing_search": "",
+  "twitter_bearer": "",
+  "twitter_api_key": "",
+  "twitter_api_secret": "",
+  "reuters": "",
+  "bloomberg": "",
+  "finnhub": "",
+  "alphavantage": "",
+  "newsdata": "",
+  "cryptonews": "",
+  "benzinga": "",
+  "oilprice": "",
+  "commodities_api": "",
+  "metals_api": "",
+  "polygon_io": ""
+}
