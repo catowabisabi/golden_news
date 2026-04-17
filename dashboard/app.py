@@ -72,8 +72,7 @@ def get_latest_articles(limit=50):
         ORDER BY a.fetched_at DESC
         LIMIT ?
     """, (limit,))
-    cols = [desc[0] for desc in db.execute("SELECT * FROM news_articles LIMIT 1").description]
-    cols.extend(["source_name", "category"])
+    cols = [d[0] for d in cursor.description]
     rows = cursor.fetchall()
     db.close()
     return [dict(zip(cols, row)) for row in rows]
