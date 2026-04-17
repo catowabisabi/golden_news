@@ -424,7 +424,7 @@ def update_dashboard(data):
                     html.Span(art["source"], style={"color": COLORS["primary"], "fontSize": "10px"}),
                     html.Span(f" • {art['sentiment']}", style={"color": sentiment_color, "fontSize": "10px"}),
                 ], style={"display": "flex", "gap": "8px"}),
-            ], style={"padding": "10px 0", "borderBottom": f"1px solid {COLORS['primary']}11"}]),
+            ], style={"padding": "10px 0", "borderBottom": f"1px solid {COLORS['primary']}11"}),
             href=art["url"] if art["url"] else "#",
             target="_blank",
             style={"textDecoration": "none"}
