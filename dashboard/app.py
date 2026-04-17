@@ -15,10 +15,23 @@ PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 
 app = dash.Dash(__name__, title="Golden News Dashboard")
-app.css.config.links.append({
-    "rel": "stylesheet",
-    "href": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-})
+
+# Google Fonts
+app.index_string = '''
+<!DOCTYPE html>
+<html>
+<head>
+    {%metas%}
+    <title>{%title%}</title>
+    {%css%}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    {%app_entry%}
+    <footer>{%config%}{%scripts%}{%renderer%}</footer>
+</body>
+</html>
+'''
 
 # Color scheme
 COLORS = {
