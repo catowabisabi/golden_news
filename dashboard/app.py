@@ -329,7 +329,7 @@ def update_dashboard(data):
                     x=[si*10, ti*10],
                     y=[0, 0],
                     mode='lines',
-                    line=dict(width=edge["strength"] * 2, color=COLORS["primary"] + "44"),
+                    line=dict(width=edge["strength"] * 2, color=COLORS["primary"]),
                     hoverinfo='text',
                     hovertext=f"Shared: {', '.join(edge['shared_keywords'][:3])}",
                     showlegend=False
