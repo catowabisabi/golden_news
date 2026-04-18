@@ -20,17 +20,24 @@ DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 CONNECTED_CLIENTS = set()
 SUBSCRIPTIONS = {}  # client_id -> set of categories
 
+
+def json_dumps(data):
+    """JSON serialize with proper Unicode support."""
+    return json.dumps(data, ensure_ascii=False, default=str)
+
+
 class NewsBroadcaster:
     def __init__(self):
         self.clients = set()
         self.lock = asyncio.Lock()
 
     async def register(self, websocket):
-        await asyncio.wait([w.send(json.dumps({
+        msg = json_dumps({
             "type": "connected",
             "message": "Connected to Golden News WebSocket",
             "timestamp": datetime.now().isoformat()
-        })) for w in self.clients])
+        })
+        await asyncio.wait([w.send(msg) for w in self.clients])
 
         async with self.lock:
             self.clients.add(websocket)
@@ -44,7 +51,7 @@ class NewsBroadcaster:
     async def broadcast(self, message):
         if not self.clients:
             return
-        msg = json.dumps(message, default=str)
+        msg = json_dumps(message)
         async with self.lock:
             dead = set()
             for client in self.clients:
@@ -68,10 +75,13 @@ class NewsBroadcaster:
             "timestamp": datetime.now().isoformat()
         })
 
+
 broadcaster = NewsBroadcaster()
+
 
 def get_db():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
+
 
 def get_latest_articles(minutes=30, limit=20):
     """Get latest articles from database"""
@@ -87,11 +97,11 @@ def get_latest_articles(minutes=30, limit=20):
         ORDER BY a.fetched_at DESC
         LIMIT ?
     """, (minutes, limit))
-    cols = [desc[0] for desc in db.execute("SELECT * FROM news_articles LIMIT 1").description]
-    cols.extend(["source_name", "category"])
+    cols = [d[0] for d in cursor.description]
     rows = cursor.fetchall()
     db.close()
     return [dict(zip(cols, row)) for row in rows]
+
 
 def get_active_signals(limit=10):
     """Get active trading signals"""
@@ -105,10 +115,11 @@ def get_active_signals(limit=10):
         ORDER BY ts.generated_at DESC
         LIMIT ?
     """, (limit,))
-    cols = [desc[0] for desc in cursor.description]
+    cols = [d[0] for d in cursor.description]
     rows = cursor.fetchall()
     db.close()
     return [dict(zip(cols, row)) for row in rows]
+
 
 def get_api_status():
     """Get API status summary"""
@@ -120,10 +131,11 @@ def get_api_status():
         WHERE is_active = 1
         GROUP BY category
     """)
-    cols = [desc[0] for desc in cursor.description]
+    cols = [d[0] for d in cursor.description]
     rows = cursor.fetchall()
     db.close()
     return [dict(zip(cols, row)) for row in rows]
+
 
 async def handle_client(websocket):
     await broadcaster.register(websocket)
@@ -134,7 +146,7 @@ async def handle_client(websocket):
                 cmd = data.get("command")
 
                 if cmd == "ping":
-                    await websocket.send(json.dumps({
+                    await websocket.send(json_dumps({
                         "type": "pong",
                         "timestamp": datetime.now().isoformat()
                     }))
@@ -144,7 +156,7 @@ async def handle_client(websocket):
                         minutes=data.get("minutes", 30),
                         limit=data.get("limit", 20)
                     )
-                    await websocket.send(json.dumps({
+                    await websocket.send(json_dumps({
                         "type": "latest_articles",
                         "data": articles,
                         "timestamp": datetime.now().isoformat()
@@ -152,7 +164,7 @@ async def handle_client(websocket):
 
                 elif cmd == "get_signals":
                     signals = get_active_signals(limit=data.get("limit", 10))
-                    await websocket.send(json.dumps({
+                    await websocket.send(json_dumps({
                         "type": "trading_signals",
                         "data": signals,
                         "timestamp": datetime.now().isoformat()
@@ -160,7 +172,7 @@ async def handle_client(websocket):
 
                 elif cmd == "get_status":
                     status = get_api_status()
-                    await websocket.send(json.dumps({
+                    await websocket.send(json_dumps({
                         "type": "api_status",
                         "data": status,
                         "timestamp": datetime.now().isoformat()
@@ -172,7 +184,7 @@ async def handle_client(websocket):
                         if id(websocket) not in SUBSCRIPTIONS:
                             SUBSCRIPTIONS[id(websocket)] = set()
                         SUBSCRIPTIONS[id(websocket)].add(cat)
-                        await websocket.send(json.dumps({
+                        await websocket.send(json_dumps({
                             "type": "subscribed",
                             "category": cat
                         }))
@@ -183,12 +195,13 @@ async def handle_client(websocket):
                         SUBSCRIPTIONS[id(websocket)].discard(cat)
 
             except json.JSONDecodeError:
-                await websocket.send(json.dumps({
+                await websocket.send(json_dumps({
                     "type": "error",
                     "message": "Invalid JSON"
                 }))
     finally:
         await broadcaster.unregister(websocket)
+
 
 async def poll_database(broadcaster, interval=15):
     """Poll database for new articles and broadcast"""
@@ -209,7 +222,7 @@ async def poll_database(broadcaster, interval=15):
             ORDER BY a.fetched_at DESC
             LIMIT 10
         """, (last_check.isoformat(),))
-        cols = [desc[0] for desc in cursor.description]
+        cols = [d[0] for d in cursor.description]
         rows = cursor.fetchall()
         db.close()
 
@@ -230,13 +243,14 @@ async def poll_database(broadcaster, interval=15):
             ORDER BY ts.generated_at DESC
             LIMIT 5
         """, (last_check.isoformat(),))
-        cols = [desc[0] for desc in cursor.description]
+        cols = [d[0] for d in cursor.description]
         rows = cursor.fetchall()
         db.close()
 
         for row in rows:
             signal = dict(zip(cols, row))
             await broadcaster.broadcast_trading_signal(signal)
+
 
 async def main(port=8765):
     print(f"🌐 Starting Golden News WebSocket Server on port {port}...")
@@ -254,6 +268,7 @@ async def main(port=8765):
 
     async with serve(handle_client, "0.0.0.0", port):
         await asyncio.Future()  # Run forever
+
 
 if __name__ == "__main__":
     try:
