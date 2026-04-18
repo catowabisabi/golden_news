@@ -594,9 +594,10 @@ app.layout = html.Div([
             html.Div(id="panel-d3", className="viz-panel active", style={"display": "block"}, children=[
                 html.Div(style={"padding": "12px 16px", "background": COLORS["card_bg"], "display": "flex", "alignItems": "center", "gap": "8px"}, children=[
                     html.Span("Nodes:", style={"color": COLORS["text"], "fontSize": "12px", "marginRight": "8px"}),
-                    dcc.Slider(id="d3-node-slider", min=5, max=40, value=15, step=1,
-                               tooltip={"placement": "bottom", "always_visible": False},
-                               style={"width": "200px", "display": "inline-block"}),
+                    html.Div(style={"width": "200px", "display": "inline-block"}, children=[
+                        dcc.Slider(id="d3-node-slider", min=5, max=40, value=15, step=1,
+                                   tooltip={"placement": "bottom", "always_visible": False}),
+                    ]),
                     html.Button("Reset View", id="d3-reset-btn", n_clicks=0,
                                style={"background": f"rgba(255,215,0,0.15)", "border": f"1px solid {COLORS['primary']}66",
                                       "color": COLORS["primary"], "padding": "6px 12px", "borderRadius": "4px",
