@@ -1,787 +1,698 @@
-# Golden News Dashboard - Standalone HTML with D3.js
-# This file can be opened directly in a browser
-# It connects to the WebSocket server at ws://localhost:8765
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Golden News - Real-Time News Intelligence</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <title>Golden News</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg:      #080c14;
+            --surface: #0f1624;
+            --card:    #161d2e;
+            --border:  rgba(255,215,0,0.10);
+            --gold:    #ffd700;
+            --cyan:    #00d4ff;
+            --green:   #00c853;
+            --red:     #ff3d57;
+            --text:    #dde3f0;
+            --muted:   #5a6580;
+            --font:    'Inter', system-ui, sans-serif;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        :root {
-            --bg: #0a0e17;
-            --card: #1a1f2e;
-            --gold: #ffd700;
-            --cyan: #00d4ff;
-            --green: #00ff88;
-            --red: #ff4757;
-            --text: #e0e0e0;
-            --muted: #6b7280;
+        html, body {
+            height: 100%;
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
         }
 
         body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
-        /* Header */
-        .header {
+        /* ── Header ── */
+        header {
+            flex-shrink: 0;
+            height: 54px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            padding: 20px 30px;
-            background: var(--card);
-            border-bottom: 1px solid rgba(255, 215, 0, 0.15);
+            justify-content: space-between;
+            padding: 0 24px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
         }
 
         .logo {
-            font-size: 24px;
+            font-size: 16px;
             font-weight: 700;
             color: var(--gold);
+            letter-spacing: 0.2px;
         }
 
-        .status {
+        .header-right {
             display: flex;
             align-items: center;
             gap: 20px;
-            font-size: 12px;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .live-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--green);
+            font-weight: 600;
+            font-size: 11px;
         }
 
         .live-dot {
-            width: 8px; height: 8px;
+            width: 7px; height: 7px;
             background: var(--green);
             border-radius: 50%;
-            animation: pulse 1.5s infinite;
+            animation: blink 2s ease-in-out infinite;
         }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
+        @keyframes blink { 50% { opacity: 0.25; } }
 
-        /* Main Layout */
-        .main {
-            display: flex;
-            height: calc(100vh - 80px);
-        }
+        .stat { color: var(--text); }
+        .stat b { color: var(--gold); }
 
-        /* Left: Graph */
-        .graph-panel {
-            flex: 1.5;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .panel-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .graph-container {
+        /* ── Main layout ── */
+        main {
             flex: 1;
-            background: var(--card);
-            border-radius: 12px;
-            overflow: hidden;
-            position: relative;
+            display: flex;
+            min-height: 0;
         }
 
-        #graph {
+        /* ── Graph panel ── */
+        .graph-panel {
+            flex: 1;
+            position: relative;
+            background: var(--bg);
+            min-width: 0;
+        }
+
+        #graph-svg {
             width: 100%;
             height: 100%;
+            display: block;
         }
 
-        .node {
+        /* Graph overlays */
+        .overlay {
+            position: absolute;
+            background: rgba(15, 22, 36, 0.90);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            backdrop-filter: blur(6px);
+        }
+
+        .graph-controls {
+            top: 14px; left: 14px;
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 11px;
+        }
+
+        .graph-controls label { color: var(--gold); font-weight: 600; }
+        .graph-controls #node-val { color: var(--text); min-width: 22px; display: inline-block; }
+
+        input[type="range"] {
+            width: 100px;
+            accent-color: var(--gold);
             cursor: pointer;
         }
 
-        .node circle {
-            transition: all 0.3s ease;
+        .graph-btns {
+            top: 14px; right: 14px;
+            padding: 6px 8px;
+            display: flex;
+            gap: 6px;
         }
 
-        .node:hover circle {
-            stroke: var(--gold);
-            stroke-width: 3px;
+        .btn {
+            padding: 5px 12px;
+            background: transparent;
+            border: 1px solid rgba(255,215,0,0.25);
+            border-radius: 5px;
+            color: var(--gold);
+            font-size: 10px;
+            font-family: var(--font);
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
         }
 
-        .node text {
-            font-size: 8px;
-            fill: var(--text);
+        .btn:hover {
+            background: rgba(255,215,0,0.12);
+        }
+
+        .graph-legend {
+            bottom: 16px; left: 14px;
+            padding: 10px 14px;
+        }
+
+        .legend-title {
+            color: var(--gold);
+            font-weight: 600;
+            font-size: 10px;
+            margin-bottom: 6px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 10px;
+            color: var(--text);
+            margin-bottom: 3px;
+        }
+
+        .ldot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .graph-stats {
+            position: absolute;
+            bottom: 16px; right: 14px;
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        /* ── Tooltip ── */
+        #tooltip {
+            position: fixed;
+            background: var(--card);
+            border: 1px solid rgba(255,215,0,0.35);
+            border-radius: 8px;
+            padding: 11px 14px;
+            font-size: 11px;
+            max-width: 280px;
             pointer-events: none;
-            font-family: 'Inter', sans-serif;
+            opacity: 0;
+            transition: opacity 0.12s;
+            z-index: 999;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+            line-height: 1.5;
         }
 
-        .link {
-            stroke: rgba(255, 215, 0, 0.15);
-            stroke-width: 1px;
-        }
+        #tooltip.show { opacity: 1; }
+        .tt-title { color: var(--text); font-weight: 600; margin-bottom: 5px; }
+        .tt-meta  { color: var(--muted); font-size: 10px; margin-bottom: 3px; }
+        .tt-kw    { color: var(--cyan);  font-size: 10px; }
 
-        .link.strong {
-            stroke: rgba(255, 215, 0, 0.5);
-            stroke-width: 2px;
-        }
-
-        /* Right: Sidebar */
+        /* ── Sidebar ── */
         .sidebar {
-            width: 420px;
-            padding: 20px;
-            overflow-y: auto;
+            flex-shrink: 0;
+            width: 360px;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            overflow: hidden;
         }
 
-        /* Signal Cards */
-        .signals-section {
-            background: var(--card);
-            border-radius: 12px;
-            padding: 20px;
-        }
-
-        .signal-card {
-            background: var(--bg);
-            border-radius: 8px;
-            padding: 14px;
-            margin-bottom: 10px;
-            border-left: 3px solid var(--muted);
-        }
-
-        .signal-card.long { border-left-color: var(--green); }
-        .signal-card.short { border-left-color: var(--red); }
-        .signal-card.neutral { border-left-color: var(--muted); }
-
-        .signal-header {
+        /* Signals */
+        .signals-pane {
+            flex-shrink: 0;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
+            flex-direction: column;
+            max-height: 50%;
+            border-bottom: 1px solid var(--border);
         }
 
-        .signal-direction {
+        /* Articles */
+        .articles-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .pane-header {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 11px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .pane-title {
             font-size: 11px;
+            font-weight: 600;
+            color: var(--text);
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+        }
+
+        .pane-badge {
+            font-size: 10px;
+            color: var(--muted);
+            background: rgba(255,255,255,0.05);
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        .pane-body {
+            overflow-y: auto;
+            flex: 1;
+            padding: 8px 12px;
+        }
+
+        /* Signal card */
+        .sig-card {
+            display: block;
+            background: var(--bg);
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 5px;
+            border-left: 3px solid var(--muted);
+            text-decoration: none;
+            transition: opacity 0.12s;
+        }
+
+        .sig-card:hover { opacity: 0.75; }
+        .sig-card.long  { border-left-color: var(--green); }
+        .sig-card.short { border-left-color: var(--red); }
+
+        .sig-row1 {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 5px;
+        }
+
+        .sig-dir {
+            font-size: 10px;
             font-weight: 700;
             letter-spacing: 0.5px;
         }
+        .sig-dir.long  { color: var(--green); }
+        .sig-dir.short { color: var(--red); }
+        .sig-dir.neutral { color: var(--muted); }
 
-        .signal-direction.long { color: var(--green); }
-        .signal-direction.short { color: var(--red); }
-        .signal-direction.neutral { color: var(--muted); }
-
-        .signal-asset {
-            font-size: 10px;
+        .sig-asset {
+            font-size: 9px;
             font-weight: 600;
-            padding: 2px 6px;
-            border-radius: 4px;
-            background: rgba(255,255,255,0.1);
-        }
-
-        .signal-confidence {
-            font-size: 10px;
-            color: var(--muted);
-        }
-
-        .signal-headline {
-            font-size: 12px;
-            line-height: 1.5;
+            padding: 1px 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.07);
             color: var(--text);
+            text-transform: uppercase;
         }
 
-        .signal-meta {
+        .sig-conf {
             font-size: 10px;
             color: var(--muted);
-            margin-top: 6px;
+            margin-left: auto;
         }
 
-        /* Articles List */
-        .articles-section {
-            background: var(--card);
-            border-radius: 12px;
-            padding: 20px;
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .article-item {
-            padding: 12px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
-
-        .article-title {
-            font-size: 12px;
+        .sig-headline {
+            font-size: 11px;
+            color: var(--text);
             line-height: 1.4;
+            margin-bottom: 4px;
+        }
+
+        .sig-meta {
+            font-size: 9px;
+            color: var(--muted);
+        }
+
+        /* Article item */
+        .art-item {
+            display: block;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            text-decoration: none;
+            transition: opacity 0.12s;
+        }
+
+        .art-item:hover { opacity: 0.72; }
+
+        .art-title {
+            font-size: 11px;
             color: var(--text);
-            margin-bottom: 6px;
+            line-height: 1.4;
+            margin-bottom: 4px;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
 
-        .article-meta {
-            font-size: 10px;
-            color: var(--muted);
+        .art-meta {
             display: flex;
-            gap: 10px;
-        }
-
-        .article-source { color: var(--gold); }
-        .article-sentiment.positive { color: var(--green); }
-        .article-sentiment.negative { color: var(--red); }
-        .article-sentiment.neutral { color: var(--muted); }
-
-        /* Tooltip */
-        .tooltip {
-            position: absolute;
-            background: var(--card);
-            border: 1px solid var(--gold);
-            border-radius: 8px;
-            padding: 12px;
-            font-size: 12px;
-            max-width: 300px;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.2s;
-            z-index: 100;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-
-        .tooltip.visible { opacity: 1; }
-        .tooltip-title { font-weight: 600; margin-bottom: 6px; color: var(--text); }
-        .tooltip-meta { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
-        .tooltip-keywords { font-size: 10px; color: var(--cyan); }
-
-        /* Legend */
-        .legend {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(26, 31, 46, 0.9);
-            border-radius: 8px;
-            padding: 12px 16px;
-            font-size: 10px;
-        }
-
-        .legend-title {
-            color: var(--gold);
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
             gap: 8px;
-            margin-bottom: 4px;
+            font-size: 9px;
         }
 
-        .legend-dot {
-            width: 8px; height: 8px;
-            border-radius: 50%;
-        }
+        .art-src { color: var(--gold); }
+        .positive { color: var(--green); }
+        .negative { color: var(--red); }
+        .neutral  { color: var(--muted); }
 
-        /* Controls */
-        .controls {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn {
-            padding: 8px 16px;
-            background: var(--card);
-            border: 1px solid rgba(255,215,0,0.3);
-            border-radius: 6px;
-            color: var(--gold);
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn:hover {
-            background: var(--gold);
-            color: var(--bg);
-        }
-
-        /* Node count slider */
-        .slider-control {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(26, 31, 46, 0.9);
-            border-radius: 8px;
-            padding: 10px 14px;
+        /* Empty */
+        .empty {
+            padding: 20px 12px;
+            text-align: center;
             font-size: 11px;
-        }
-
-        .slider-control label {
-            color: var(--gold);
-            font-weight: 600;
-            margin-right: 8px;
-        }
-
-        .slider-control input[type="range"] {
-            width: 120px;
-            accent-color: var(--gold);
-        }
-
-        .slider-control span {
-            color: var(--text);
-            margin-left: 6px;
-        }
-
-        /* Empty state */
-        .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
             color: var(--muted);
-            font-size: 14px;
-            gap: 15px;
+            line-height: 1.7;
         }
-
-        .empty-icon { font-size: 48px; opacity: 0.5; }
 
         /* Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: var(--bg); }
-        ::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 3px; }
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,215,0,0.18); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,215,0,0.35); }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="logo">🏆 Golden News</div>
-        <div class="status">
-            <div class="live-dot"></div>
-            <span style="color: var(--green)">LIVE</span>
-            <span id="last-update" style="color: var(--muted)">Connecting...</span>
-            <span style="color: var(--muted); margin-left: 10px;">|</span>
-            <span id="article-count" style="color: var(--text)">0 articles</span>
-            <span style="color: var(--muted);">|</span>
-            <span id="signal-count" style="color: var(--gold)">0 signals</span>
+    <header>
+        <div class="logo">Golden News</div>
+        <div class="header-right">
+            <div class="live-badge">
+                <div class="live-dot"></div>
+                LIVE
+            </div>
+            <span class="stat"><b id="h-articles">0</b> articles</span>
+            <span class="stat"><b id="h-signals">0</b> signals</span>
+            <span id="h-time">–</span>
         </div>
-    </div>
+    </header>
 
-    <div class="main">
+    <main>
+        <!-- Graph -->
         <div class="graph-panel">
-            <div class="panel-title">📊 News Relationship Graph</div>
-            <div class="graph-container">
-                <svg id="graph"></svg>
+            <svg id="graph-svg"></svg>
 
-                <!-- Controls: Node count slider -->
-                <div class="slider-control">
-                    <label>Nodes:</label>
-                    <input type="range" id="nodeSlider" min="5" max="30" value="15" oninput="updateNodeLimit(+this.value)">
-                    <span id="nodeLimitDisplay">15</span>
-                </div>
-
-                <div class="legend">
-                    <div class="legend-title">Sentiment</div>
-                    <div class="legend-item"><div class="legend-dot" style="background: var(--green)"></div> Positive</div>
-                    <div class="legend-item"><div class="legend-dot" style="background: var(--red)"></div> Negative</div>
-                    <div class="legend-item"><div class="legend-dot" style="background: var(--muted)"></div> Neutral</div>
-                    <div class="legend-title" style="margin-top: 12px">Lines</div>
-                    <div class="legend-item"><div class="legend-dot" style="background: transparent; border: 1px solid rgba(255,215,0,0.5)"></div> Shared keywords</div>
-                    <div class="legend-item"><div class="legend-dot" style="background: var(--gold)"></div> Trading signal</div>
-                </div>
-
-                <div class="controls">
-                    <button class="btn" onclick="resetZoom()">Reset</button>
-                    <button class="btn" onclick="toggleLabels()">Labels</button>
-                </div>
+            <div class="overlay graph-controls">
+                <label>Nodes</label>
+                <input type="range" id="node-slider" min="5" max="40" value="20">
+                <span id="node-val">20</span>
             </div>
+
+            <div class="overlay graph-btns">
+                <button class="btn" id="btn-reset">Reset</button>
+                <button class="btn" id="btn-labels">Labels</button>
+            </div>
+
+            <div class="overlay graph-legend">
+                <div class="legend-title">Sentiment</div>
+                <div class="legend-item"><div class="ldot" style="background:var(--green)"></div>Positive</div>
+                <div class="legend-item"><div class="ldot" style="background:var(--red)"></div>Negative</div>
+                <div class="legend-item"><div class="ldot" style="background:var(--muted)"></div>Neutral</div>
+                <div class="legend-title" style="margin-top:8px">Marker</div>
+                <div class="legend-item"><div class="ldot" style="border:2px solid var(--gold);background:transparent"></div>Signal</div>
+            </div>
+
+            <div class="graph-stats" id="graph-stats"></div>
         </div>
 
-        <div class="sidebar">
-            <div class="signals-section">
-                <div class="panel-title">⚡ Trading Signals</div>
-                <div id="signals-list">
-                    <div class="empty-state">
-                        <div class="empty-icon">⚡</div>
-                        <div>No signals yet</div>
-                        <div style="font-size: 11px">AI signals will appear here</div>
-                    </div>
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="signals-pane">
+                <div class="pane-header">
+                    <span class="pane-title">⚡ Signals</span>
+                    <span class="pane-badge" id="sig-badge">0</span>
+                </div>
+                <div class="pane-body" id="signals-list">
+                    <div class="empty">No signals yet.<br>Run ai_analyzer.py to generate signals.</div>
                 </div>
             </div>
 
-            <div class="articles-section">
-                <div class="panel-title">📰 Latest Articles</div>
-                <div id="articles-list">
-                    <div class="empty-state">
-                        <div class="empty-icon">📰</div>
-                        <div>No articles yet</div>
-                        <div style="font-size: 11px">Run collector.py to fetch news</div>
-                    </div>
+            <div class="articles-pane">
+                <div class="pane-header">
+                    <span class="pane-title">📰 Latest Articles</span>
+                    <span class="pane-badge" id="art-badge">0</span>
+                </div>
+                <div class="pane-body" id="articles-list">
+                    <div class="empty">No articles yet.<br>Run collector.py to fetch news.</div>
                 </div>
             </div>
-        </div>
+        </aside>
+    </main>
+
+    <div id="tooltip">
+        <div class="tt-title" id="tt-title"></div>
+        <div class="tt-meta"  id="tt-meta"></div>
+        <div class="tt-kw"   id="tt-kw"></div>
     </div>
 
-    <div class="tooltip" id="tooltip">
-        <div class="tooltip-title" id="tt-title"></div>
-        <div class="tooltip-meta" id="tt-meta"></div>
-        <div class="tooltip-keywords" id="tt-keywords"></div>
-    </div>
-
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <script>
-        // WebSocket connection
-        let ws;
-        let allArticles = [];  // Store ALL articles
-        let graphData = { nodes: [], edges: [], signals: [] };
+        // When opened as a file (file://) change this to 'http://localhost:8050'
+        const API = location.protocol === 'file:' ? 'http://localhost:8050' : '';
+
+        const STOP = new Set([
+            'that','this','with','from','have','been','were','they','what','when','where',
+            'which','about','would','could','your','more','than','after','also','into',
+            'some','will','their','there','just','only','over','such','before','being',
+            'through','because','should','other','these','those','while','under','since',
+            'then','very','much','like','said','make','know','want','need','take','come',
+            'time','year','back','even','well','most','many','good','does','each','same'
+        ]);
+
+        let articles = [];
+        let signals  = [];
+        let nodeLimit = 20;
         let showLabels = true;
-        let simulation;
-        let nodeLimit = 15;  // Default limit
+        let simulation = null;
 
-        function connect() {
-            ws = new WebSocket('ws://localhost:8765');
-
-            ws.onopen = () => {
-                console.log('Connected to Golden News WebSocket');
-                document.getElementById('last-update').textContent = 'Connected';
-                ws.send(JSON.stringify({ command: 'get_latest', minutes: 1440, limit: 50 }));
-                ws.send(JSON.stringify({ command: 'get_signals', limit: 10 }));
-            };
-
-            ws.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'latest_articles') {
-                    allArticles = msg.data || [];
-                    rebuildGraph();
-                } else if (msg.type === 'trading_signals') {
-                    updateSignals(msg.data);
-                } else if (msg.type === 'new_article') {
-                    if (msg.data && msg.data.title) {
-                        allArticles.push(msg.data);
-                        rebuildGraph();
-                    }
-                    document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
-                }
-            };
-
-            ws.onclose = () => {
-                document.getElementById('last-update').textContent = 'Disconnected - Reconnecting...';
-                setTimeout(connect, 3000);
-            };
-        }
-
-        function updateNodeLimit(n) {
-            nodeLimit = n;
-            document.getElementById('nodeLimitDisplay').textContent = n;
-            rebuildGraph();
-        }
-
-        function rebuildGraph() {
-            // Limit articles to nodeLimit
-            const articles = allArticles.slice(0, nodeLimit);
-            const nodeMap = new Map();
-
-            // Build keywords map for each article
-            articles.forEach(art => {
-                if (!art.title) return;
-                const text = (art.title + ' ' + (art.summary || '')).toLowerCase();
-                const words = text.match(/\b\w{4,}\b/g) || [];
-                const stopWords = new Set([
-                    'that', 'this', 'with', 'from', 'have', 'been', 'were',
-                    'they', 'what', 'when', 'where', 'which', 'about',
-                    'would', 'could', 'your', 'more', 'than', 'after',
-                    'also', 'into', 'some', 'will', 'their', 'there',
-                    'would', 'could', 'just', 'only', 'over', 'such',
-                    'before', 'after', 'being', 'through', 'because'
+        // ── Fetch ──
+        async function fetchAll() {
+            try {
+                const [aRes, sRes] = await Promise.all([
+                    fetch(API + '/api/articles'),
+                    fetch(API + '/api/signals')
                 ]);
-                const keywords = [...new Set(words.filter(w => !stopWords.has(w)))].slice(0, 10);
+                if (aRes.ok) articles = await aRes.json();
+                if (sRes.ok) signals  = await sRes.json();
+            } catch (e) {
+                console.error('Fetch error:', e);
+                return;
+            }
+            updateHeader();
+            renderSignals();
+            renderArticles();
+            buildGraph();
+        }
 
-                const sentiment = art.sentiment_label || 'neutral';
-                const colors = { positive: '#00ff88', negative: '#ff4757', neutral: '#6b7280' };
-                const size = art.is_trading_signal ? 14 : 7;
+        function updateHeader() {
+            document.getElementById('h-articles').textContent = articles.length;
+            document.getElementById('h-signals').textContent  = signals.length;
+            document.getElementById('h-time').textContent     = new Date().toLocaleTimeString();
+        }
 
-                nodeMap.set(art.id, {
-                    id: art.id,
-                    // Show article TITLE (not just source) as label
-                    label: art.title.length > 35 ? art.title.slice(0, 35) + '...' : art.title,
-                    fullTitle: art.title,
-                    url: art.url,
-                    source: art.source_name || 'Unknown',
-                    sentiment: sentiment,
-                    color: colors[sentiment],
-                    size: size,
-                    isSignal: art.is_trading_signal,
-                    keywords: keywords,
-                    // Spread nodes in a grid pattern initially to reduce initial overlap
-                    x: 0,
-                    y: 0
-                });
+        // ── Signals ──
+        function renderSignals() {
+            const el = document.getElementById('signals-list');
+            document.getElementById('sig-badge').textContent = signals.length;
+            if (!signals.length) {
+                el.innerHTML = '<div class="empty">No signals yet.<br>Run ai_analyzer.py to generate signals.</div>';
+                return;
+            }
+            el.innerHTML = signals.slice(0, 12).map(s => {
+                const dir  = (s.direction || 'neutral').toLowerCase();
+                const conf = Math.round((s.confidence || 0) * 100);
+                const href = s.article_url
+                    ? s.article_url
+                    : 'https://www.google.com/search?q=' + encodeURIComponent(s.headline || '');
+                return `<a class="sig-card ${dir}" href="${href}" target="_blank">
+                    <div class="sig-row1">
+                        <span class="sig-dir ${dir}">${dir.toUpperCase()}</span>
+                        <span class="sig-asset">${s.asset_class || '—'}</span>
+                        <span class="sig-conf">${conf}%</span>
+                    </div>
+                    <div class="sig-headline">${esc(s.headline || '')}</div>
+                    <div class="sig-meta">${esc(s.source_name || '')} · ${esc(s.time_horizon || '')}</div>
+                </a>`;
+            }).join('');
+        }
+
+        // ── Articles ──
+        function renderArticles() {
+            const el = document.getElementById('articles-list');
+            document.getElementById('art-badge').textContent = articles.length;
+            if (!articles.length) {
+                el.innerHTML = '<div class="empty">No articles yet.<br>Run collector.py to fetch news.</div>';
+                return;
+            }
+            el.innerHTML = articles.slice(0, 40).map(a => {
+                const sent = a.sentiment_label || 'neutral';
+                return `<a class="art-item" href="${a.url || '#'}" target="_blank">
+                    <div class="art-title">${esc(a.title || '')}</div>
+                    <div class="art-meta">
+                        <span class="art-src">${esc((a.source_name || 'Unknown').slice(0, 20))}</span>
+                        <span class="${sent}">${sent}</span>
+                    </div>
+                </a>`;
+            }).join('');
+        }
+
+        // ── Graph ──
+        const svgEl    = document.getElementById('graph-svg');
+        const svg      = d3.select(svgEl);
+        const gRoot    = svg.append('g');
+        const panel    = document.querySelector('.graph-panel');
+        const tooltip  = document.getElementById('tooltip');
+
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 6])
+            .on('zoom', e => gRoot.attr('transform', e.transform));
+        svg.call(zoom);
+
+        document.getElementById('btn-reset').onclick = () =>
+            svg.transition().duration(450).call(zoom.transform, d3.zoomIdentity);
+
+        document.getElementById('btn-labels').onclick = () => {
+            showLabels = !showLabels;
+            gRoot.selectAll('.nlabel').style('opacity', showLabels ? 1 : 0);
+        };
+
+        const slider = document.getElementById('node-slider');
+        slider.addEventListener('input', () => {
+            nodeLimit = +slider.value;
+            document.getElementById('node-val').textContent = nodeLimit;
+            buildGraph();
+        });
+
+        function buildGraph() {
+            const subset = articles.slice(0, nodeLimit);
+            if (!subset.length) {
+                gRoot.selectAll('*').remove();
+                document.getElementById('graph-stats').textContent = '';
+                return;
+            }
+
+            const nodes = subset.map(a => {
+                const text = ((a.title || '') + ' ' + (a.summary || '')).toLowerCase();
+                const kws  = [...new Set((text.match(/\b[a-z]{4,}\b/g) || [])
+                    .filter(w => !STOP.has(w)))].slice(0, 12);
+                const sent = a.sentiment_label || 'neutral';
+                return {
+                    id:       a.id,
+                    title:    a.title || '',
+                    label:    (a.title || '').split(' ').slice(0, 5).join(' '),
+                    url:      a.url,
+                    source:   a.source_name || '',
+                    sentiment: sent,
+                    color:    sent === 'positive' ? '#00c853' : sent === 'negative' ? '#ff3d57' : '#4a5568',
+                    size:     a.is_trading_signal ? 12 : 7,
+                    isSignal: !!a.is_trading_signal,
+                    kws
+                };
             });
 
-            // Build edges - articles share 3+ keywords get connected
             const edges = [];
-            const nodes = Array.from(nodeMap.values());
-
             for (let i = 0; i < nodes.length; i++) {
                 for (let j = i + 1; j < nodes.length; j++) {
-                    const a = nodes[i];
-                    const b = nodes[j];
-                    const shared = a.keywords.filter(k => b.keywords.includes(k));
+                    const shared = nodes[i].kws.filter(k => nodes[j].kws.includes(k));
                     if (shared.length >= 3) {
                         edges.push({
-                            source: a.id,
-                            target: b.id,
-                            strength: Math.min(shared.length * 0.12, 0.9),
-                            shared: shared.slice(0, 4)
+                            source:   nodes[i].id,
+                            target:   nodes[j].id,
+                            strength: Math.min(shared.length * 0.10, 0.9)
                         });
                     }
                 }
             }
 
-            graphData.nodes = nodes;
-            graphData.edges = edges;
+            const W = panel.clientWidth;
+            const H = panel.clientHeight;
+            svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+            document.getElementById('graph-stats').textContent =
+                `${nodes.length} nodes · ${edges.length} links`;
 
-            document.getElementById('article-count').textContent = `${nodes.length} nodes, ${edges.length} connections`;
-            renderGraph();
-            renderArticles();
-        }
+            gRoot.selectAll('*').remove();
 
-        function updateSignals(signals) {
-            graphData.signals = signals || [];
-            document.getElementById('signal-count').textContent = `${graphData.signals.length} signals`;
-            renderSignals();
-        }
+            const link = gRoot.append('g').selectAll('line')
+                .data(edges).enter().append('line')
+                .attr('stroke', d => `rgba(255,215,0,${Math.max(d.strength * 0.45, 0.07)})`)
+                .attr('stroke-width', d => Math.max(d.strength * 2, 0.4));
 
-        function renderGraph() {
-            const svg = d3.select('#graph');
-            const container = document.querySelector('.graph-container');
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-
-            svg.attr('width', width).attr('height', height);
-            svg.selectAll('*').remove();
-
-            if (graphData.nodes.length === 0) return;
-
-            // Create zoom
-            const zoom = d3.zoom()
-                .scaleExtent([0.1, 5])
-                .on('zoom', (event) => {
-                    g.attr('transform', event.transform);
-                });
-
-            svg.call(zoom);
-
-            const g = svg.append('g');
-
-            // Links
-            const links = g.append('g')
-                .selectAll('line')
-                .data(graphData.edges)
-                .enter()
-                .append('line')
-                .attr('class', d => 'link ' + (d.strength > 0.4 ? 'strong' : ''))
-                .attr('stroke', d => `rgba(255, 215, 0, ${d.strength})`)
-                .attr('stroke-width', d => Math.max(d.strength * 2, 0.5));
-
-            // Nodes
-            const nodes = g.append('g')
-                .selectAll('g')
-                .data(graphData.nodes)
-                .enter()
-                .append('g')
-                .attr('class', 'node')
+            const node = gRoot.append('g').selectAll('g')
+                .data(nodes).enter().append('g')
+                .style('cursor', 'pointer')
                 .call(d3.drag()
-                    .on('start', dragstarted)
-                    .on('drag', dragged)
-                    .on('end', dragended));
+                    .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+                    .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+                    .on('end',   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+                );
 
-            nodes.append('circle')
+            node.append('circle')
                 .attr('r', d => d.size)
                 .attr('fill', d => d.color)
-                .attr('stroke', d => d.isSignal ? '#ffd700' : 'transparent')
-                .attr('stroke-width', d => d.isSignal ? 3 : 0);
+                .attr('stroke', d => d.isSignal ? '#ffd700' : 'none')
+                .attr('stroke-width', d => d.isSignal ? 2.5 : 0);
 
-            // Show ARTICLE TITLE as label (not source)
-            nodes.append('text')
-                .text(d => showLabels ? d.label : '')
-                .attr('dy', d => d.size + 12)
+            node.append('text')
+                .attr('class', 'nlabel')
+                .text(d => d.label)
+                .attr('dy', d => d.size + 11)
                 .attr('text-anchor', 'middle')
-                .each(function(d) {
-                    // If label is long, split into multiple lines
-                    if (d.label.length > 30) {
-                        const words = d.label.split(' ');
-                        let line = '';
-                        let lineNum = 0;
-                        const lineHeight = 11;
-                        d3.select(this).text('');
-                        words.forEach(word => {
-                            const testLine = line + word + ' ';
-                            if (testLine.length > 30 && line !== '') {
-                                d3.select(this).append('tspan')
-                                    .attr('x', 0)
-                                    .attr('dy', lineNum === 0 ? (d.size + 14) : lineHeight)
-                                    .text(line.trim());
-                                line = word + ' ';
-                                lineNum++;
-                            } else {
-                                line = testLine;
-                            }
-                        });
-                        d3.select(this).append('tspan')
-                            .attr('x', 0)
-                            .attr('dy', lineNum === 0 ? (d.size + 14) : lineHeight)
-                            .text(line.trim());
-                    }
-                });
+                .attr('fill', '#7a8499')
+                .attr('font-size', '8px')
+                .attr('font-family', 'Inter, sans-serif')
+                .style('pointer-events', 'none')
+                .style('opacity', showLabels ? 1 : 0);
 
-            // Tooltip
-            const tooltip = document.getElementById('tooltip');
-
-            nodes.on('mouseover', (event, d) => {
-                document.getElementById('tt-title').textContent = d.fullTitle;
-                document.getElementById('tt-meta').textContent = `${d.source} | ${d.sentiment}`;
-                document.getElementById('tt-keywords').textContent = '🔗 ' + d.keywords.slice(0, 5).join(', ');
-                tooltip.classList.add('visible');
-                tooltip.style.left = (event.pageX + 15) + 'px';
-                tooltip.style.top = (event.pageY - 10) + 'px';
-            });
-
-            nodes.on('mousemove', (event) => {
-                tooltip.style.left = (event.pageX + 15) + 'px';
-                tooltip.style.top = (event.pageY - 10) + 'px';
-            });
-
-            nodes.on('mouseout', () => {
-                tooltip.classList.remove('visible');
-            });
-
-            nodes.on('click', (event, d) => {
+            node.on('mouseover', (e, d) => {
+                document.getElementById('tt-title').textContent = d.title;
+                document.getElementById('tt-meta').textContent  = `${d.source} · ${d.sentiment}`;
+                document.getElementById('tt-kw').textContent    = d.kws.slice(0, 5).join(', ');
+                tooltip.classList.add('show');
+            }).on('mousemove', e => {
+                tooltip.style.left = (e.clientX + 16) + 'px';
+                tooltip.style.top  = (e.clientY - 12) + 'px';
+            }).on('mouseout', () => {
+                tooltip.classList.remove('show');
+            }).on('click', (e, d) => {
                 if (d.url) window.open(d.url, '_blank');
             });
 
-            // Force simulation - tuned for readability
-            simulation = d3.forceSimulation(graphData.nodes)
-                .force('link', d3.forceLink(graphData.edges)
-                    .id(d => d.id)
-                    .distance(d => 180 - d.strength * 60))
-                .force('charge', d3.forceManyBody().strength(-350))
-                .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(d => d.size + 25))
-                .force('x', d3.forceX(width / 2).strength(0.03))
-                .force('y', d3.forceY(height / 2).strength(0.03))
+            if (simulation) simulation.stop();
+            simulation = d3.forceSimulation(nodes)
+                .force('link',      d3.forceLink(edges).id(d => d.id).distance(d => 155 - d.strength * 55))
+                .force('charge',    d3.forceManyBody().strength(-280))
+                .force('center',    d3.forceCenter(W / 2, H / 2))
+                .force('collision', d3.forceCollide().radius(d => d.size + 18))
                 .on('tick', () => {
-                    links
-                        .attr('x1', d => d.source.x)
-                        .attr('y1', d => d.source.y)
-                        .attr('x2', d => d.target.x)
-                        .attr('y2', d => d.target.y);
-
-                    nodes.attr('transform', d => {
-                        d.x = Math.max(30, Math.min(width - 30, d.x));
-                        d.y = Math.max(30, Math.min(height - 30, d.y));
+                    link
+                        .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                    node.attr('transform', d => {
+                        d.x = Math.max(20, Math.min(W - 20, d.x));
+                        d.y = Math.max(20, Math.min(H - 20, d.y));
                         return `translate(${d.x},${d.y})`;
                     });
                 });
-
-            function dragstarted(event, d) {
-                if (!event.active) simulation.alphaTarget(0.3).restart();
-                d.fx = d.x;
-                d.fy = d.y;
-            }
-
-            function dragged(event, d) {
-                d.fx = event.x;
-                d.fy = event.y;
-            }
-
-            function dragended(event, d) {
-                if (!event.active) simulation.alphaTarget(0);
-                d.fx = null;
-                d.fy = null;
-            }
         }
 
-        function renderSignals() {
-            const container = document.getElementById('signals-list');
-            if (!graphData.signals || graphData.signals.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon">⚡</div>
-                        <div>No signals yet</div>
-                        <div style="font-size: 11px">AI signals will appear here</div>
-                    </div>`;
-                return;
-            }
-
-            container.innerHTML = graphData.signals.map(sig => `
-                <div class="signal-card ${sig.direction}">
-                    <div class="signal-header">
-                        <span class="signal-direction ${sig.direction}">${(sig.direction || 'neutral').toUpperCase()}</span>
-                        <span class="signal-asset">${sig.asset_class || 'N/A'}</span>
-                        <span class="signal-confidence">${Math.round((sig.confidence || 0) * 100)}%</span>
-                    </div>
-                    <div class="signal-headline">${sig.headline || 'No headline'}</div>
-                    <div class="signal-meta">${sig.source_name || ''} • ${sig.time_horizon || ''}</div>
-                </div>
-            `).join('');
+        // ── Helpers ──
+        function esc(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
         }
 
-        function renderArticles() {
-            const container = document.getElementById('articles-list');
-            if (graphData.nodes.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon">📰</div>
-                        <div>No articles yet</div>
-                    </div>`;
-                return;
-            }
-
-            // Show latest articles from sidebar
-            const articles = allArticles.slice(0, 15);
-            container.innerHTML = articles.map(node => `
-                <div class="article-item">
-                    <a href="${node.url || '#'}" target="_blank" style="text-decoration: none; color: inherit;">
-                        <div class="article-title">${node.title || ''}</div>
-                        <div class="article-meta">
-                            <span class="article-source">${node.source_name || 'Unknown'}</span>
-                            <span class="article-sentiment ${node.sentiment_label || 'neutral'}">${node.sentiment_label || 'neutral'}</span>
-                        </div>
-                    </a>
-                </div>
-            `).join('');
-        }
-
-        function resetZoom() {
-            d3.select('#graph')
-                .transition()
-                .duration(500)
-                .call(d3.zoom().transform, d3.zoomIdentity);
-        }
-
-        function toggleLabels() {
-            showLabels = !showLabels;
-            d3.selectAll('.node text')
-                .style('opacity', showLabels ? 1 : 0);
-        }
-
-        // Resize handler
-        window.addEventListener('resize', () => {
-            if (graphData.nodes.length > 0) renderGraph();
-        });
-
-        // Connect on load
-        connect();
+        // ── Init ──
+        fetchAll();
+        setInterval(fetchAll, 30000);
+        window.addEventListener('resize', buildGraph);
     </script>
 </body>
 </html>
