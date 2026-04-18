@@ -182,7 +182,7 @@ def get_graph_data():
 def api_graph_data():
     """API endpoint for D3.js graph - returns JSON with nodes and edges"""
     data = get_graph_data()
-    return jsonify(data, ensure_ascii=False)
+    return jsonify(data)
 
 @server.route('/api/signals')
 def api_signals():
@@ -375,7 +375,7 @@ def update_dashboard(n):
                 }),
                 html.Div([
                     html.Span(art["source_name"][:15], style={"color": COLORS["primary"], "fontSize": "9px"}),
-                    html.Span(f" • {art['sentiment']}", style={"color": sentiment_color, "fontSize": "9px"}),
+                    html.Span(f" • {art['sentiment_label']}", style={"color": sentiment_color, "fontSize": "9px"}),
                 ], style={"display": "flex", "gap": "6px"}),
             ], style={"padding": "8px 0", "borderBottom": f"1px solid {COLORS['primary']}11"}),
             href=art["url"] if art["url"] else "#",
