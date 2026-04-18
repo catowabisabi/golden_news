@@ -708,14 +708,7 @@ app.layout = html.Div([
     # Auto-refresh interval
     dcc.Interval(id="refresh-interval", interval=30000, n_intervals=0),
 
-    # Inject extra CSS for tabs (hidden dash default styles)
-    html.Style('''
-    .tab-btn { padding: 10px 16px; background: transparent; border: none; color: #888; font-size: 13px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; font-family: 'Inter', sans-serif; }
-    .tab-btn:hover { color: #e0e0e0; }
-    .tab-btn.active { color: #ffd700; border-bottom: 2px solid #ffd700; font-weight: 600; }
-    .Tabs { background: #0a0e17 !important; border: none !important; }
-    .Tabs-vertical { background: #0a0e17 !important; }
-    '''),
+
 
 ], style={
     "fontFamily": "Inter, sans-serif", "background": COLORS["background"],
