@@ -117,13 +117,14 @@
         }
 
         .node text {
-            font-size: 9px;
-            fill: var(--muted);
+            font-size: 8px;
+            fill: var(--text);
             pointer-events: none;
+            font-family: 'Inter', sans-serif;
         }
 
         .link {
-            stroke: rgba(255, 215, 0, 0.2);
+            stroke: rgba(255, 215, 0, 0.15);
             stroke-width: 1px;
         }
 
@@ -315,6 +316,33 @@
             color: var(--bg);
         }
 
+        /* Node count slider */
+        .slider-control {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(26, 31, 46, 0.9);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 11px;
+        }
+
+        .slider-control label {
+            color: var(--gold);
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .slider-control input[type="range"] {
+            width: 120px;
+            accent-color: var(--gold);
+        }
+
+        .slider-control span {
+            color: var(--text);
+            margin-left: 6px;
+        }
+
         /* Empty state */
         .empty-state {
             display: flex;
@@ -354,6 +382,14 @@
             <div class="panel-title">📊 News Relationship Graph</div>
             <div class="graph-container">
                 <svg id="graph"></svg>
+
+                <!-- Controls: Node count slider -->
+                <div class="slider-control">
+                    <label>Nodes:</label>
+                    <input type="range" id="nodeSlider" min="5" max="30" value="15" oninput="updateNodeLimit(+this.value)">
+                    <span id="nodeLimitDisplay">15</span>
+                </div>
+
                 <div class="legend">
                     <div class="legend-title">Sentiment</div>
                     <div class="legend-item"><div class="legend-dot" style="background: var(--green)"></div> Positive</div>
@@ -361,7 +397,9 @@
                     <div class="legend-item"><div class="legend-dot" style="background: var(--muted)"></div> Neutral</div>
                     <div class="legend-title" style="margin-top: 12px">Lines</div>
                     <div class="legend-item"><div class="legend-dot" style="background: transparent; border: 1px solid rgba(255,215,0,0.5)"></div> Shared keywords</div>
+                    <div class="legend-item"><div class="legend-dot" style="background: var(--gold)"></div> Trading signal</div>
                 </div>
+
                 <div class="controls">
                     <button class="btn" onclick="resetZoom()">Reset</button>
                     <button class="btn" onclick="toggleLabels()">Labels</button>
@@ -403,9 +441,11 @@
     <script>
         // WebSocket connection
         let ws;
+        let allArticles = [];  // Store ALL articles
         let graphData = { nodes: [], edges: [], signals: [] };
         let showLabels = true;
         let simulation;
+        let nodeLimit = 15;  // Default limit
 
         function connect() {
             ws = new WebSocket('ws://localhost:8765');
@@ -413,18 +453,23 @@
             ws.onopen = () => {
                 console.log('Connected to Golden News WebSocket');
                 document.getElementById('last-update').textContent = 'Connected';
-                ws.send(JSON.stringify({ command: 'get_latest', minutes: 60, limit: 50 }));
+                ws.send(JSON.stringify({ command: 'get_latest', minutes: 1440, limit: 50 }));
                 ws.send(JSON.stringify({ command: 'get_signals', limit: 10 }));
             };
 
             ws.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'latest_articles') {
-                    updateFromArticles(msg.data);
+                    allArticles = msg.data || [];
+                    rebuildGraph();
                 } else if (msg.type === 'trading_signals') {
                     updateSignals(msg.data);
                 } else if (msg.type === 'new_article') {
-                    addArticle(msg.data);
+                    if (msg.data && msg.data.title) {
+                        allArticles.push(msg.data);
+                        rebuildGraph();
+                    }
+                    document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
                 }
             };
 
@@ -434,40 +479,55 @@
             };
         }
 
-        function updateFromArticles(articles) {
-            // Build nodes and edges
+        function updateNodeLimit(n) {
+            nodeLimit = n;
+            document.getElementById('nodeLimitDisplay').textContent = n;
+            rebuildGraph();
+        }
+
+        function rebuildGraph() {
+            // Limit articles to nodeLimit
+            const articles = allArticles.slice(0, nodeLimit);
             const nodeMap = new Map();
 
-            articles.forEach((art, i) => {
+            // Build keywords map for each article
+            articles.forEach(art => {
                 if (!art.title) return;
-
-                // Extract keywords
                 const text = (art.title + ' ' + (art.summary || '')).toLowerCase();
                 const words = text.match(/\b\w{4,}\b/g) || [];
-                const stopWords = new Set(['that', 'this', 'with', 'from', 'have', 'been', 'were', 'they', 'what', 'when', 'where', 'which', 'about', 'would', 'could', 'your', 'more', 'than', 'after', 'also', 'into', 'some', 'will', 'their', 'there', 'would', 'could']);
-                const keywords = [...new Set(words.filter(w => !stopWords.has(w)))].slice(0, 8);
+                const stopWords = new Set([
+                    'that', 'this', 'with', 'from', 'have', 'been', 'were',
+                    'they', 'what', 'when', 'where', 'which', 'about',
+                    'would', 'could', 'your', 'more', 'than', 'after',
+                    'also', 'into', 'some', 'will', 'their', 'there',
+                    'would', 'could', 'just', 'only', 'over', 'such',
+                    'before', 'after', 'being', 'through', 'because'
+                ]);
+                const keywords = [...new Set(words.filter(w => !stopWords.has(w)))].slice(0, 10);
 
                 const sentiment = art.sentiment_label || 'neutral';
                 const colors = { positive: '#00ff88', negative: '#ff4757', neutral: '#6b7280' };
-                const size = art.is_trading_signal ? 16 : 8;
+                const size = art.is_trading_signal ? 14 : 7;
 
                 nodeMap.set(art.id, {
                     id: art.id,
-                    title: art.title.length > 60 ? art.title.slice(0, 60) + '...' : art.title,
+                    // Show article TITLE (not just source) as label
+                    label: art.title.length > 35 ? art.title.slice(0, 35) + '...' : art.title,
                     fullTitle: art.title,
                     url: art.url,
-                    source: art.source_name,
+                    source: art.source_name || 'Unknown',
                     sentiment: sentiment,
                     color: colors[sentiment],
                     size: size,
                     isSignal: art.is_trading_signal,
                     keywords: keywords,
-                    x: 400 + (Math.random() - 0.5) * 300,
-                    y: 300 + (Math.random() - 0.5) * 200
+                    // Spread nodes in a grid pattern initially to reduce initial overlap
+                    x: 0,
+                    y: 0
                 });
             });
 
-            // Build edges
+            // Build edges - articles share 3+ keywords get connected
             const edges = [];
             const nodes = Array.from(nodeMap.values());
 
@@ -476,12 +536,12 @@
                     const a = nodes[i];
                     const b = nodes[j];
                     const shared = a.keywords.filter(k => b.keywords.includes(k));
-                    if (shared.length >= 2) {
+                    if (shared.length >= 3) {
                         edges.push({
                             source: a.id,
                             target: b.id,
-                            strength: Math.min(shared.length * 0.15, 0.8),
-                            shared: shared.slice(0, 3)
+                            strength: Math.min(shared.length * 0.12, 0.9),
+                            shared: shared.slice(0, 4)
                         });
                     }
                 }
@@ -490,24 +550,15 @@
             graphData.nodes = nodes;
             graphData.edges = edges;
 
-            document.getElementById('article-count').textContent = `${nodes.length} articles`;
+            document.getElementById('article-count').textContent = `${nodes.length} nodes, ${edges.length} connections`;
             renderGraph();
             renderArticles();
         }
 
         function updateSignals(signals) {
-            graphData.signals = signals;
-            document.getElementById('signal-count').textContent = `${signals.length} signals`;
+            graphData.signals = signals || [];
+            document.getElementById('signal-count').textContent = `${graphData.signals.length} signals`;
             renderSignals();
-        }
-
-        function addArticle(article) {
-            // Add to graph if new
-            const existing = graphData.nodes.find(n => n.id === article.id);
-            if (!existing && article.title) {
-                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
-            }
-            ws.send(JSON.stringify({ command: 'get_latest', minutes: 30, limit: 30 }));
         }
 
         function renderGraph() {
@@ -523,7 +574,7 @@
 
             // Create zoom
             const zoom = d3.zoom()
-                .scaleExtent([0.2, 4])
+                .scaleExtent([0.1, 5])
                 .on('zoom', (event) => {
                     g.attr('transform', event.transform);
                 });
@@ -540,7 +591,7 @@
                 .append('line')
                 .attr('class', d => 'link ' + (d.strength > 0.4 ? 'strong' : ''))
                 .attr('stroke', d => `rgba(255, 215, 0, ${d.strength})`)
-                .attr('stroke-width', d => d.strength * 2);
+                .attr('stroke-width', d => Math.max(d.strength * 2, 0.5));
 
             // Nodes
             const nodes = g.append('g')
@@ -558,12 +609,40 @@
                 .attr('r', d => d.size)
                 .attr('fill', d => d.color)
                 .attr('stroke', d => d.isSignal ? '#ffd700' : 'transparent')
-                .attr('stroke-width', d => d.isSignal ? 2 : 0);
+                .attr('stroke-width', d => d.isSignal ? 3 : 0);
 
+            // Show ARTICLE TITLE as label (not source)
             nodes.append('text')
-                .text(d => showLabels ? d.source.slice(0, 10) : '')
+                .text(d => showLabels ? d.label : '')
                 .attr('dy', d => d.size + 12)
-                .attr('text-anchor', 'middle');
+                .attr('text-anchor', 'middle')
+                .each(function(d) {
+                    // If label is long, split into multiple lines
+                    if (d.label.length > 30) {
+                        const words = d.label.split(' ');
+                        let line = '';
+                        let lineNum = 0;
+                        const lineHeight = 11;
+                        d3.select(this).text('');
+                        words.forEach(word => {
+                            const testLine = line + word + ' ';
+                            if (testLine.length > 30 && line !== '') {
+                                d3.select(this).append('tspan')
+                                    .attr('x', 0)
+                                    .attr('dy', lineNum === 0 ? (d.size + 14) : lineHeight)
+                                    .text(line.trim());
+                                line = word + ' ';
+                                lineNum++;
+                            } else {
+                                line = testLine;
+                            }
+                        });
+                        d3.select(this).append('tspan')
+                            .attr('x', 0)
+                            .attr('dy', lineNum === 0 ? (d.size + 14) : lineHeight)
+                            .text(line.trim());
+                    }
+                });
 
             // Tooltip
             const tooltip = document.getElementById('tooltip');
@@ -571,8 +650,13 @@
             nodes.on('mouseover', (event, d) => {
                 document.getElementById('tt-title').textContent = d.fullTitle;
                 document.getElementById('tt-meta').textContent = `${d.source} | ${d.sentiment}`;
-                document.getElementById('tt-keywords').textContent = d.keywords.slice(0, 5).join(', ');
+                document.getElementById('tt-keywords').textContent = '🔗 ' + d.keywords.slice(0, 5).join(', ');
                 tooltip.classList.add('visible');
+                tooltip.style.left = (event.pageX + 15) + 'px';
+                tooltip.style.top = (event.pageY - 10) + 'px';
+            });
+
+            nodes.on('mousemove', (event) => {
                 tooltip.style.left = (event.pageX + 15) + 'px';
                 tooltip.style.top = (event.pageY - 10) + 'px';
             });
@@ -585,14 +669,16 @@
                 if (d.url) window.open(d.url, '_blank');
             });
 
-            // Force simulation
+            // Force simulation - tuned for readability
             simulation = d3.forceSimulation(graphData.nodes)
                 .force('link', d3.forceLink(graphData.edges)
                     .id(d => d.id)
-                    .distance(d => 120 / d.strength))
-                .force('charge', d3.forceManyBody().strength(-200))
+                    .distance(d => 180 - d.strength * 60))
+                .force('charge', d3.forceManyBody().strength(-350))
                 .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(d => d.size + 10))
+                .force('collision', d3.forceCollide().radius(d => d.size + 25))
+                .force('x', d3.forceX(width / 2).strength(0.03))
+                .force('y', d3.forceY(height / 2).strength(0.03))
                 .on('tick', () => {
                     links
                         .attr('x1', d => d.source.x)
@@ -601,8 +687,8 @@
                         .attr('y2', d => d.target.y);
 
                     nodes.attr('transform', d => {
-                        d.x = Math.max(20, Math.min(width - 20, d.x));
-                        d.y = Math.max(20, Math.min(height - 20, d.y));
+                        d.x = Math.max(30, Math.min(width - 30, d.x));
+                        d.y = Math.max(30, Math.min(height - 30, d.y));
                         return `translate(${d.x},${d.y})`;
                     });
                 });
@@ -627,16 +713,24 @@
 
         function renderSignals() {
             const container = document.getElementById('signals-list');
-            if (graphData.signals.length === 0) return;
+            if (!graphData.signals || graphData.signals.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">⚡</div>
+                        <div>No signals yet</div>
+                        <div style="font-size: 11px">AI signals will appear here</div>
+                    </div>`;
+                return;
+            }
 
             container.innerHTML = graphData.signals.map(sig => `
                 <div class="signal-card ${sig.direction}">
                     <div class="signal-header">
-                        <span class="signal-direction ${sig.direction}">${sig.direction.toUpperCase()}</span>
-                        <span class="signal-asset">${sig.asset_class}</span>
-                        <span class="signal-confidence">${Math.round(sig.confidence * 100)}%</span>
+                        <span class="signal-direction ${sig.direction}">${(sig.direction || 'neutral').toUpperCase()}</span>
+                        <span class="signal-asset">${sig.asset_class || 'N/A'}</span>
+                        <span class="signal-confidence">${Math.round((sig.confidence || 0) * 100)}%</span>
                     </div>
-                    <div class="signal-headline">${sig.headline}</div>
+                    <div class="signal-headline">${sig.headline || 'No headline'}</div>
                     <div class="signal-meta">${sig.source_name || ''} • ${sig.time_horizon || ''}</div>
                 </div>
             `).join('');
@@ -644,15 +738,24 @@
 
         function renderArticles() {
             const container = document.getElementById('articles-list');
-            if (graphData.nodes.length === 0) return;
+            if (graphData.nodes.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📰</div>
+                        <div>No articles yet</div>
+                    </div>`;
+                return;
+            }
 
-            container.innerHTML = graphData.nodes.slice(0, 20).map(node => `
+            // Show latest articles from sidebar
+            const articles = allArticles.slice(0, 15);
+            container.innerHTML = articles.map(node => `
                 <div class="article-item">
                     <a href="${node.url || '#'}" target="_blank" style="text-decoration: none; color: inherit;">
-                        <div class="article-title">${node.fullTitle}</div>
+                        <div class="article-title">${node.title || ''}</div>
                         <div class="article-meta">
-                            <span class="article-source">${node.source}</span>
-                            <span class="article-sentiment ${node.sentiment}">${node.sentiment}</span>
+                            <span class="article-source">${node.source_name || 'Unknown'}</span>
+                            <span class="article-sentiment ${node.sentiment_label || 'neutral'}">${node.sentiment_label || 'neutral'}</span>
                         </div>
                     </a>
                 </div>
@@ -669,7 +772,7 @@
         function toggleLabels() {
             showLabels = !showLabels;
             d3.selectAll('.node text')
-                .text(d => showLabels ? d.source.slice(0, 10) : '');
+                .style('opacity', showLabels ? 1 : 0);
         }
 
         // Resize handler
