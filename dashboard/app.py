@@ -19,11 +19,6 @@ DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 server = Flask(__name__)
 app = dash.Dash(__name__, server=server, title="Golden News Dashboard")
 
-@server.after_request
-def add_cors(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    return response
-
 # Google Fonts
 app.index_string = '''
 <!DOCTYPE html>
@@ -362,8 +357,8 @@ def update_dashboard(n):
     # Articles
     articles_html = []
     for art in articles[:15]:
-        sentiment_color = COLORS["positive"] if art["sentiment_label"] == "positive" else \
-                         COLORS["negative"] if art["sentiment_label"] == "negative" else COLORS["neutral"]
+        sentiment_color = COLORS["positive"] if art["sentiment"] == "positive" else \
+                         COLORS["negative"] if art["sentiment"] == "negative" else COLORS["neutral"]
 
         articles_html.append(html.A(
             html.Div([
@@ -386,10 +381,12 @@ def update_dashboard(n):
     return signals_html, articles_html, last_update
 
 
-def build_graph_script():
-    """Returns a self-contained Dash clientside callback that builds the D3 graph."""
-    return r"""
+# D3.js Force-Directed Graph - single self-contained clientside callback
+# Graph initializes once, then auto-refreshes every 30s via setInterval
+app.clientside_callback(
+    """
     function(n_intervals) {
+        // Inject CSS once
         if (!document.getElementById('gn-graph-css')) {
             const style = document.createElement('style');
             style.id = 'gn-graph-css';
@@ -407,14 +404,42 @@ def build_graph_script():
                 #graph-tooltip .tt-keywords { font-size: 10px; color: #00d4ff; margin-top: 4px; }
                 .node-group { cursor: pointer; }
                 .node-label { pointer-events: none; font-family: Inter, sans-serif; }
+                .gn-control-btn { cursor: pointer; }
             `;
             document.head.appendChild(style);
         }
 
-        const container = document.getElementById('graph-container');
-        if (!container) return null;
+        const containerId = 'graph-container';
+        const container = document.getElementById(containerId);
+        if (!container) return;
 
-        function buildGraph(container) {
+        // Initialize graph only once
+        if (!window.gnGraphReady) {
+            window.gnGraphReady = true;
+
+            // Load D3.js dynamically
+            if (!window.d3) {
+                const script = document.createElement('script');
+                script.src = 'https://d3js.org/d3.v7.min.js';
+                script.onload = () => buildGraph(container);
+                document.head.appendChild(script);
+            } else {
+                buildGraph(container);
+            }
+        }
+        // Return null to prevent Dash from clearing our D3-managed children
+        return null;
+    }
+    """,
+    Output("graph-container", "children"),
+    Input("refresh-interval", "n_intervals")
+)
+
+
+def build_graph_script():
+    """Returns the JavaScript string for the buildGraph function."""
+    return r"""
+    function buildGraph(container) {
         const width  = container.clientWidth  || window.innerWidth  - 380;
         const height = container.clientHeight || window.innerHeight - 60;
 
@@ -648,24 +673,13 @@ def build_graph_script():
                     window.gnSim.alpha(0.1).restart();
                 }).catch(() => {});
         }, 30000);
-        }  // end buildGraph
-
-        if (!window.gnGraphReady) {
-            window.gnGraphReady = true;
-            if (!window.d3) {
-                const script = document.createElement('script');
-                script.src = 'https://d3js.org/d3.v7.min.js';
-                script.onload = () => buildGraph(container);
-                document.head.appendChild(script);
-            } else {
-                buildGraph(container);
-            }
-        }
-        return null;
-    }  // end callback
+    }
     """
 
 
+# Build the D3.js graph - single, self-contained callback
+# The buildGraph function is passed as a Dash clientside callback
+# so Dash serializes it into the page as a real JavaScript function.
 _buildGraphJS = build_graph_script()
 
 app.clientside_callback(
