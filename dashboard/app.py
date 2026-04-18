@@ -178,6 +178,10 @@ def get_graph_data():
 
     return {"nodes": nodes, "edges": edges, "signals": signals}
 
+@server.route('/health')
+def health():
+    return jsonify({"status": "ok"})
+
 @server.route('/api/graph-data')
 def api_graph_data():
     """API endpoint for D3.js graph - returns JSON with nodes and edges"""
