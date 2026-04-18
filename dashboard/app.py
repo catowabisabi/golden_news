@@ -10,11 +10,14 @@ import dash
 from dash import dcc, html, callback, Output, Input
 import plotly.graph_objects as go
 import plotly.express as px
+from flask import Flask, jsonify
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 
-app = dash.Dash(__name__, title="Golden News Dashboard")
+# Use Flask server for API endpoints
+server = Flask(__name__)
+app = dash.Dash(__name__, server=server, title="Golden News Dashboard")
 
 # Google Fonts
 app.index_string = '''
@@ -155,7 +158,7 @@ def get_graph_data():
             kw_b = set(keyword_map.get(art_b["id"], []))
             shared = kw_a & kw_b
 
-            if len(shared) >= 2:
+            if len(shared) >= 3:
                 # Same source = stronger link
                 strength = 0.3 + (0.2 * len(shared))
                 if art_a["source_name"] == art_b["source_name"]:
@@ -170,13 +173,31 @@ def get_graph_data():
 
     return {"nodes": nodes, "edges": edges, "signals": signals}
 
+@server.route('/api/graph-data')
+def api_graph_data():
+    """API endpoint for D3.js graph - returns JSON with nodes and edges"""
+    data = get_graph_data()
+    return jsonify(data, ensure_ascii=False)
+
+@server.route('/api/signals')
+def api_signals():
+    """API endpoint for signals"""
+    signals = get_active_signals(limit=20)
+    return jsonify(signals)
+
+@server.route('/api/articles')
+def api_articles():
+    """API endpoint for articles"""
+    articles = get_latest_articles(limit=50)
+    return jsonify(articles)
+
 # Build the app layout
 app.layout = html.Div([
-    # Header
+    # Header - minimal, full width
     html.Div([
         html.H1("🏆 Golden News", style={
             "color": COLORS["primary"],
-            "fontSize": "28px",
+            "fontSize": "24px",
             "fontWeight": "700",
             "margin": "0",
             "fontFamily": "Inter, sans-serif"
@@ -189,260 +210,484 @@ app.layout = html.Div([
         "display": "flex",
         "justifyContent": "space-between",
         "alignItems": "center",
-        "padding": "20px 30px",
+        "padding": "16px 24px",
         "background": COLORS["card_bg"],
-        "borderBottom": f"1px solid {COLORS['primary']}22"
+        "borderBottom": f"1px solid {COLORS['primary']}22",
+        "margin": "0"
     }),
 
-    # Main content
+    # Main content - full bleed, no margins
     html.Div([
-        # Left: News Graph
+        # Left: News Graph - full height D3.js embedded
         html.Div([
-            html.H3("📊 News Relationship Graph", style={
-                "color": COLORS["text"],
-                "fontSize": "16px",
-                "fontWeight": "600",
-                "padding": "15px 20px 10px",
-                "margin": "0"
-            }),
             html.Div(id="graph-container", style={
-                "height": "500px",
+                "height": "calc(100vh - 60px)",
                 "background": COLORS["background"],
-                "borderRadius": "8px",
-                "margin": "0 20px 20px",
-                "overflow": "hidden"
-            }),
-        ], style={
-            "flex": "1.5",
-            "background": COLORS["card_bg"],
-            "borderRadius": "12px",
-            "margin": "20px",
-        }),
-
-        # Right: Signals + Articles
-        html.Div([
-            # Trading Signals
-            html.H3("⚡ Active Trading Signals", style={
-                "color": COLORS["primary"],
-                "fontSize": "16px",
-                "fontWeight": "600",
-                "padding": "15px 20px 10px",
                 "margin": "0"
-            }),
-            html.Div(id="signals-container", style={
-                "maxHeight": "280px",
-                "overflowY": "auto",
-                "padding": "0 20px"
-            }),
-
-            html.Hr(style={"borderColor": COLORS["primary"] + "22", "margin": "20px 0"}),
-
-            # Latest Articles
-            html.H3("📰 Latest Articles", style={
-                "color": COLORS["text"],
-                "fontSize": "16px",
-                "fontWeight": "600",
-                "padding": "0 20px 10px",
-                "margin": "0"
-            }),
-            html.Div(id="articles-container", style={
-                "maxHeight": "400px",
-                "overflowY": "auto",
-                "padding": "0 20px 20px"
             }),
         ], style={
             "flex": "1",
             "background": COLORS["card_bg"],
-            "borderRadius": "12px",
-            "margin": "20px 20px 20px 0",
-            "maxWidth": "450px"
+            "margin": "0"
+        }),
+
+        # Right: Signals + Articles - compact sidebar
+        html.Div([
+            # Trading Signals
+            html.H3("⚡ Signals", style={
+                "color": COLORS["primary"],
+                "fontSize": "14px",
+                "fontWeight": "600",
+                "padding": "12px 16px 8px",
+                "margin": "0"
+            }),
+            html.Div(id="signals-container", style={
+                "maxHeight": "200px",
+                "overflowY": "auto",
+                "padding": "0 12px"
+            }),
+
+            html.Hr(style={"borderColor": COLORS["primary"] + "22", "margin": "12px 0"}),
+
+            # Latest Articles
+            html.H3("📰 Latest", style={
+                "color": COLORS["text"],
+                "fontSize": "14px",
+                "fontWeight": "600",
+                "padding": "0 16px 8px",
+                "margin": "0"
+            }),
+            html.Div(id="articles-container", style={
+                "maxHeight": "calc(100vh - 340px)",
+                "overflowY": "auto",
+                "padding": "0 12px 12px"
+            }),
+        ], style={
+            "width": "380px",
+            "background": COLORS["card_bg"],
+            "margin": "0",
+            "borderLeft": f"1px solid {COLORS['primary']}11",
+            "overflowY": "auto"
         }),
     ], style={
         "display": "flex",
-        "padding": "20px",
+        "padding": "0",
         "background": COLORS["background"],
-        "minHeight": "calc(100vh - 80px)"
+        "height": "calc(100vh - 60px)"
     }),
 
     # Auto-refresh interval
     dcc.Interval(id="refresh-interval", interval=30000, n_intervals=0),
 
-    # Hidden div for storing graph data
-    dcc.Store(id="graph-data-store"),
+
 ], style={
     "fontFamily": "Inter, sans-serif",
     "background": COLORS["background"],
     "minHeight": "100vh",
-    "margin": "0"
+    "margin": "0",
+    "padding": "0"
 })
 
 @callback(
-    Output("graph-data-store", "data"),
-    Input("refresh-interval", "n_intervals")
-)
-def update_graph_data(n):
-    return get_graph_data()
-
-@callback(
-    Output("graph-container", "children"),
     Output("signals-container", "children"),
     Output("articles-container", "children"),
     Output("last-update", "children"),
-    Input("graph-data-store", "data")
+    Input("refresh-interval", "n_intervals")
 )
-def update_dashboard(data):
-    if not data:
-        return html.Div("Loading..."), [], [], ""
-
+def update_dashboard(n):
     from datetime import datetime
     last_update = f"Updated: {datetime.now().strftime('%H:%M:%S')}"
 
-    # News Graph (D3.js style using Plotly)
-    nodes = data["nodes"]
-    edges = data["edges"]
-
-    if not nodes:
-        graph = html.Div("No articles yet. Run collector.py to fetch news.",
-                         style={"color": COLORS["neutral"], "textAlign": "center", "padding": "200px 0"})
-    else:
-        # Use Plotly's built-in network graph (simpler than D3 for this demo)
-        # For production, use actual D3.js via Html Iframe
-        edge_x, edge_y, edge_colors = [], [], []
-        for edge in edges:
-            src = next((n for n in nodes if n["id"] == edge["source"]), None)
-            tgt = next((n for n in nodes if n["id"] == edge["target"]), None)
-            if src and tgt:
-                edge_x.extend([nodes.index(src) * 10, nodes.index(tgt) * 10, None])
-                edge_y.extend([0, 0, None])
-
-        # Simple scatter for nodes
-        fig = go.Figure()
-
-        # Add edges as lines
-        for edge in edges[:30]:  # Limit edges
-            src = next((n for n in nodes if n["id"] == edge["source"]), None)
-            tgt = next((n for n in nodes if n["id"] == edge["target"]), None)
-            if src and tgt:
-                si = nodes.index(src)
-                ti = nodes.index(tgt)
-                fig.add_trace(go.Scatter(
-                    x=[si*10, ti*10],
-                    y=[0, 0],
-                    mode='lines',
-                    line=dict(width=edge["strength"] * 2, color=COLORS["primary"]),
-                    hoverinfo='text',
-                    hovertext=f"Shared: {', '.join(edge['shared_keywords'][:3])}",
-                    showlegend=False
-                ))
-
-        # Add nodes
-        for node in nodes:
-            i = nodes.index(node)
-            color = COLORS["negative"] if node["sentiment"] == "negative" else \
-                    COLORS["positive"] if node["sentiment"] == "positive" else COLORS["neutral"]
-            size = 20 if node["is_signal"] else 10
-
-            fig.add_trace(go.Scatter(
-                x=[i * 10],
-                y=[0],
-                mode='markers+text',
-                marker=dict(size=size, color=color, line=dict(width=1, color=COLORS["card_bg"])),
-                text=node["source"][:8],
-                textposition="bottom center",
-                textfont=dict(color=COLORS["text"], size=8),
-                hovertemplate=f"<b>{node['full_title']}</b><br>Source: {node['source']}<br>Sentiment: {node['sentiment']}<extra></extra>",
-                showlegend=False
-            ))
-
-        fig.update_layout(
-            paper_bgcolor=COLORS["background"],
-            plot_bgcolor=COLORS["background"],
-            font=dict(color=COLORS["text"], family="Inter"),
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            hovermode='closest',
-            margin=dict(l=20, r=20, t=20, b=40),
-            height=480,
-        )
-
-        graph = dcc.Graph(
-            figure=fig,
-            config={"displayModeBar": False, "responsive": True},
-            style={"height": "480px"}
-        )
+    # Get data for sidebar
+    signals = get_active_signals(limit=10)
+    articles = get_latest_articles(limit=20)
 
     # Signals
     signals_html = []
-    for sig in data["signals"][:8]:
+    for sig in signals[:8]:
         direction_color = COLORS["positive"] if sig["direction"] == "long" else \
                           COLORS["negative"] if sig["direction"] == "short" else COLORS["neutral"]
         confidence_pct = int(sig["confidence"] * 100)
 
-        signals_html.append(html.Div([
+        signals_html.append(html.A(
             html.Div([
-                html.Span(f"{sig['direction'].upper()}", style={
-                    "color": direction_color,
-                    "fontWeight": "700",
-                    "fontSize": "11px"
+                html.Div([
+                    html.Span(f"{sig['direction'].upper()}", style={
+                        "color": direction_color,
+                        "fontWeight": "700",
+                        "fontSize": "10px"
+                    }),
+                    html.Span(f" {sig['asset_class'].upper()}", style={
+                        "color": ASSET_COLORS.get(sig["asset_class"], COLORS["neutral"]),
+                        "fontWeight": "600",
+                        "fontSize": "10px"
+                    }),
+                    html.Span(f" {confidence_pct}%", style={
+                        "color": COLORS["neutral"],
+                        "fontSize": "10px"
+                    }),
+                ], style={"display": "flex", "justifyContent": "space-between"}),
+                html.Div(sig["headline"], style={
+                    "color": COLORS["text"],
+                    "fontSize": "11px",
+                    "marginTop": "4px",
+                    "lineHeight": "1.3"
                 }),
-                html.Span(f" {sig['asset_class'].upper()}", style={
-                    "color": ASSET_COLORS.get(sig["asset_class"], COLORS["neutral"]),
-                    "fontWeight": "600",
-                    "fontSize": "10px"
-                }),
-                html.Span(f" {confidence_pct}%", style={
+                html.Div(f"{sig.get('source_name', '')} • {sig.get('time_horizon', '')}", style={
                     "color": COLORS["neutral"],
-                    "fontSize": "10px"
+                    "fontSize": "9px",
+                    "marginTop": "4px"
                 }),
-            ], style={"display": "flex", "justifyContent": "space-between"}),
-            html.Div(sig["headline"], style={
-                "color": COLORS["text"],
-                "fontSize": "12px",
-                "marginTop": "4px",
-                "lineHeight": "1.4"
+            ], style={
+                "background": COLORS["background"],
+                "borderRadius": "6px",
+                "padding": "10px",
+                "marginBottom": "8px",
+                "borderLeft": f"3px solid {direction_color}",
             }),
-            html.Div(f"{sig.get('source_name', '')} • {sig.get('time_horizon', '')}", style={
-                "color": COLORS["neutral"],
-                "fontSize": "10px",
-                "marginTop": "4px"
-            }),
-        ], style={
-            "background": COLORS["background"],
-            "borderRadius": "8px",
-            "padding": "12px",
-            "marginBottom": "10px",
-            "borderLeft": f"3px solid {direction_color}",
-        }))
+            href=f"https://www.google.com/search?q={sig.get('headline', '')}" if not sig.get('article_url') else sig.get('article_url'),
+            target="_blank",
+            style={"textDecoration": "none"}
+        ))
 
     if not signals_html:
         signals_html = [html.Div("No signals yet. Run ai_analyzer.py to generate signals.",
-                                 style={"color": COLORS["neutral"], "fontSize": "12px", "padding": "20px 0"})]
+                                 style={"color": COLORS["neutral"], "fontSize": "11px", "padding": "10px 0"})]
 
     # Articles
     articles_html = []
-    for art in data["nodes"][:15]:
+    for art in articles[:15]:
         sentiment_color = COLORS["positive"] if art["sentiment"] == "positive" else \
                          COLORS["negative"] if art["sentiment"] == "negative" else COLORS["neutral"]
 
         articles_html.append(html.A(
             html.Div([
-                html.Div(art["title"], style={
+                html.Div(art["title"][:80] + "..." if len(art["title"]) > 80 else art["title"], style={
                     "color": COLORS["text"],
-                    "fontSize": "12px",
-                    "lineHeight": "1.4",
+                    "fontSize": "11px",
+                    "lineHeight": "1.3",
                     "marginBottom": "4px"
                 }),
                 html.Div([
-                    html.Span(art["source"], style={"color": COLORS["primary"], "fontSize": "10px"}),
-                    html.Span(f" • {art['sentiment']}", style={"color": sentiment_color, "fontSize": "10px"}),
-                ], style={"display": "flex", "gap": "8px"}),
-            ], style={"padding": "10px 0", "borderBottom": f"1px solid {COLORS['primary']}11"}),
+                    html.Span(art["source_name"][:15], style={"color": COLORS["primary"], "fontSize": "9px"}),
+                    html.Span(f" • {art['sentiment']}", style={"color": sentiment_color, "fontSize": "9px"}),
+                ], style={"display": "flex", "gap": "6px"}),
+            ], style={"padding": "8px 0", "borderBottom": f"1px solid {COLORS['primary']}11"}),
             href=art["url"] if art["url"] else "#",
             target="_blank",
             style={"textDecoration": "none"}
         ))
 
-    return graph, signals_html, articles_html, last_update
+    return signals_html, articles_html, last_update
+
+
+# D3.js Force-Directed Graph - single self-contained clientside callback
+# Graph initializes once, then auto-refreshes every 30s via setInterval
+app.clientside_callback(
+    """
+    function(n_intervals) {
+        // Inject CSS once
+        if (!document.getElementById('gn-graph-css')) {
+            const style = document.createElement('style');
+            style.id = 'gn-graph-css';
+            style.textContent = `
+                #graph-container { position: relative; overflow: hidden; }
+                #graph-container svg { display: block; width: 100%; height: 100%; }
+                #graph-tooltip {
+                    position: absolute; background: #1a1f2e; border: 1px solid #ffd700;
+                    border-radius: 8px; padding: 12px; font-size: 12px; max-width: 340px;
+                    pointer-events: none; opacity: 0; z-index: 100;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.5); font-family: Inter, sans-serif;
+                }
+                #graph-tooltip .tt-title { color: #e0e0e0; font-weight: 600; font-size: 12px; }
+                #graph-tooltip .tt-meta { font-size: 10px; color: #888; margin-top: 6px; }
+                #graph-tooltip .tt-keywords { font-size: 10px; color: #00d4ff; margin-top: 4px; }
+                .node-group { cursor: pointer; }
+                .node-label { pointer-events: none; font-family: Inter, sans-serif; }
+                .gn-control-btn { cursor: pointer; }
+            `;
+            document.head.appendChild(style);
+        }
+
+        const containerId = 'graph-container';
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        // Initialize graph only once
+        if (!window.gnGraphReady) {
+            window.gnGraphReady = true;
+
+            // Load D3.js dynamically
+            if (!window.d3) {
+                const script = document.createElement('script');
+                script.src = 'https://d3js.org/d3.v7.min.js';
+                script.onload = () => buildGraph(container);
+                document.head.appendChild(script);
+            } else {
+                buildGraph(container);
+            }
+        }
+        // Return null to prevent Dash from clearing our D3-managed children
+        return null;
+    }
+    """,
+    Output("graph-container", "children"),
+    Input("refresh-interval", "n_intervals")
+)
+
+
+def build_graph_script():
+    """Returns the JavaScript string for the buildGraph function."""
+    return r"""
+    function buildGraph(container) {
+        const width  = container.clientWidth  || window.innerWidth  - 380;
+        const height = container.clientHeight || window.innerHeight - 60;
+
+        // ---- SVG ----
+        const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svgEl.setAttribute('width', width);
+        svgEl.setAttribute('height', height);
+        svgEl.style.background = '#0a0e17';
+        container.appendChild(svgEl);
+        const svg = d3.select(svgEl);
+        const g   = svg.append('g');
+
+        // ---- Tooltip (HTML div, NOT inside SVG) ----
+        const tooltip = document.createElement('div');
+        tooltip.id = 'graph-tooltip';
+        tooltip.innerHTML = '<div class="tt-title"></div><div class="tt-meta"></div><div class="tt-keywords"></div>';
+        container.appendChild(tooltip);
+
+        // ---- Zoom ----
+        const zoom = d3.zoom()
+            .scaleExtent([0.2, 4])
+            .on('zoom', e => g.attr('transform', e.transform));
+        svg.call(zoom);
+
+        // ---- Controls panel (HTML overlay) ----
+        const ctrl = document.createElement('div');
+        ctrl.style.cssText = 'position:absolute;top:16px;left:16px;background:rgba(26,31,46,0.95);border-radius:8px;padding:12px 16px;font-size:11px;z-index:10;border:1px solid rgba(255,215,0,0.2);font-family:Inter,sans-serif;';
+        ctrl.innerHTML = `
+            <div style="margin-bottom:8px">
+                <span style="color:#ffd700;font-weight:600">Nodes:</span>
+                <input type="range" id="gn-node-slider" min="5" max="40" value="15"
+                    style="width:90px;accent-color:#ffd700;margin:0 8px">
+                <span id="gn-node-count" style="color:#e0e0e0;min-width:20px;display:inline-block">15</span>
+            </div>
+            <div>
+                <button id="gn-reset-btn" class="gn-control-btn"
+                    style="background:rgba(255,215,0,0.15);border:1px solid rgba(255,215,0,0.4);color:#ffd700;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:10px">Reset</button>
+                <button id="gn-labels-btn" class="gn-control-btn"
+                    style="background:rgba(255,215,0,0.15);border:1px solid rgba(255,215,0,0.4);color:#ffd700;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:10px;margin-left:8px">Labels</button>
+            </div>`;
+        container.appendChild(ctrl);
+
+        document.getElementById('gn-reset-btn').onclick = () =>
+            svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+        document.getElementById('gn-labels-btn').onclick = () => {
+            window.gnShowLabels = !window.gnShowLabels;
+            svg.selectAll('.node-label').style('opacity', window.gnShowLabels ? 1 : 0);
+        };
+        const slider = document.getElementById('gn-node-slider');
+        slider.addEventListener('input', function() {
+            document.getElementById('gn-node-count').textContent = this.value;
+            window.gnNodeLimit = +this.value;
+            svg.selectAll('.node-group').style('display',
+                (d, i) => i < window.gnNodeLimit ? 'block' : 'none');
+        });
+
+        // ---- Stats text (SVG) ----
+        const statsText = svg.append('text')
+            .attr('id', 'gn-stats')
+            .attr('x', width - 20).attr('y', height - 20)
+            .attr('text-anchor', 'end')
+            .attr('fill', '#888').attr('font-size', '10px')
+            .attr('font-family', 'Inter, sans-serif')
+            .text('Loading...');
+
+        // ---- Legend (SVG) ----
+        const legend = svg.append('g')
+            .attr('transform', `translate(16,${height - 105})`);
+        legend.append('rect').attr('width', 100).attr('height', 92)
+            .attr('fill', 'rgba(26,31,46,0.95)').attr('rx', 6)
+            .attr('stroke', 'rgba(255,215,0,0.15)');
+        legend.append('text').attr('x', 10).attr('y', 18)
+            .attr('fill', '#ffd700').attr('font-size', '10px').attr('font-weight', '600')
+            .attr('font-family', 'Inter, sans-serif').text('Sentiment');
+        [
+            { color: '#00ff88', label: 'Positive' },
+            { color: '#ff4757', label: 'Negative' },
+            { color: '#888',    label: 'Neutral'  },
+            { color: '#ffd700', label: 'Signal',  ring: true }
+        ].forEach((item, i) => {
+            const y = 34 + i * 15;
+            if (item.ring) {
+                legend.append('circle').attr('cx', 15).attr('cy', y - 4).attr('r', 5)
+                    .attr('fill', 'transparent').attr('stroke', item.color).attr('stroke-width', 2);
+            } else {
+                legend.append('circle').attr('cx', 15).attr('cy', y - 4).attr('r', 4).attr('fill', item.color);
+            }
+            legend.append('text').attr('x', 28).attr('y', y)
+                .attr('fill', '#e0e0e0').attr('font-size', '9px')
+                .attr('font-family', 'Inter, sans-serif').text(item.label);
+        });
+
+        window.gnShowLabels = true;
+        window.gnNodeLimit  = 15;
+
+        // ---- Fetch & Render ----
+        function renderGraph() {
+            fetch('/api/graph-data')
+                .then(r => r.ok ? r.json() : Promise.reject(new Error('API ' + r.status)))
+                .then(data => {
+                    if (!data.nodes || data.nodes.length === 0) {
+                        svg.append('text').attr('x', width/2).attr('y', height/2)
+                            .attr('fill', '#888').attr('text-anchor', 'middle')
+                            .attr('font-family', 'Inter, sans-serif')
+                            .text('No articles yet. Run collector.py to fetch news.');
+                        return;
+                    }
+
+                    statsText.text(`${data.nodes.length} articles | ${data.edges ? data.edges.length : 0} connections`);
+
+                    // Random initial positions
+                    const nodes = data.nodes.map(n => ({
+                        ...n,
+                        x: width/2  + (Math.random() - 0.5) * Math.min(width * 0.4, 400),
+                        y: height/2 + (Math.random() - 0.5) * Math.min(height * 0.4, 300)
+                    }));
+                    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+                    window.gnNodes   = nodes;
+                    window.gnNodeMap = nodeMap;
+
+                    const links = (data.edges || []).map(e => ({
+                        source: nodeMap.get(e.source),
+                        target: nodeMap.get(e.target),
+                        strength: e.strength,
+                        shared:   e.shared_keywords || []
+                    })).filter(e => e.source && e.target);
+                    window.gnLinks = links;
+
+                    // Simulation
+                    const sim = d3.forceSimulation(nodes)
+                        .force('link',      d3.forceLink(links).id(d => d.id).distance(d => 150 - d.strength * 50))
+                        .force('charge',     d3.forceManyBody().strength(-350))
+                        .force('center',     d3.forceCenter(width/2, height/2))
+                        .force('collision',  d3.forceCollide().radius(d => (d.is_signal ? 18 : 10) + 25));
+                    window.gnSim = sim;
+
+                    // Links
+                    const link = g.append('g').attr('class', 'links')
+                        .selectAll('line').data(links).enter()
+                        .append('line')
+                        .attr('stroke', d => `rgba(255,215,0,${Math.max(d.strength * 0.6, 0.1)})`)
+                        .attr('stroke-width', d => Math.max(d.strength * 2, 0.5));
+
+                    // Nodes
+                    const node = g.append('g').attr('class', 'nodes')
+                        .selectAll('g').data(nodes).enter()
+                        .append('g').attr('class', 'node-group')
+                        .call(d3.drag()
+                            .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+                            .on('drag',   (e, d) => { d.fx = e.x; d.fy = e.y; })
+                            .on('end',    (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+                        );
+
+                    node.append('circle')
+                        .attr('r', d => d.is_signal ? 16 : 8)
+                        .attr('fill', d => d.color || '#888')
+                        .attr('stroke', d => d.is_signal ? '#ffd700' : 'transparent')
+                        .attr('stroke-width', d => d.is_signal ? 3 : 0);
+
+                    node.append('text').attr('class', 'node-label')
+                        .text(d => {
+                            const t = d.full_title || d.title || '';
+                            const w = t.split(' ').slice(0, 4);
+                            return w.join(' ') + (t.split(' ').length > 4 ? '...' : '');
+                        })
+                        .attr('dy',      d => d.is_signal ? 24 : 18)
+                        .attr('text-anchor', 'middle')
+                        .attr('fill', '#e0e0e0').attr('font-size', '8px')
+                        .attr('font-family', 'Inter, sans-serif')
+                        .style('pointer-events', 'none');
+
+                    // Mouse events (use page coordinates for tooltip positioning)
+                    node.on('mouseover', (e, d) => {
+                        tooltip.querySelector('.tt-title').textContent = d.full_title || d.title || '';
+                        tooltip.querySelector('.tt-meta').textContent = `${d.source || ''} | ${d.sentiment || ''}`;
+                        tooltip.querySelector('.tt-keywords').textContent = '\uD83D\uDD17 ' + ((d.keywords || []).slice(0, 5)).join(', ');
+                        tooltip.style.opacity = 1;
+                    })
+                    .on('mousemove', (e) => {
+                        const rect = container.getBoundingClientRect();
+                        tooltip.style.left = (e.clientX - rect.left + 15) + 'px';
+                        tooltip.style.top  = (e.clientY - rect.top  - 10) + 'px';
+                    })
+                    .on('mouseout',  () => { tooltip.style.opacity = 0; })
+                    .on('click', (e, d) => { if (d.url) window.open(d.url, '_blank'); });
+
+                    // Tick
+                    sim.on('tick', () => {
+                        link.attr('x1', d => d.source.x)
+                            .attr('y1', d => d.source.y)
+                            .attr('x2', d => d.target.x)
+                            .attr('y2', d => d.target.y);
+                        node.attr('transform', d => {
+                            d.x = Math.max(30, Math.min(width  - 30, d.x));
+                            d.y = Math.max(30, Math.min(height - 30, d.y));
+                            return `translate(${d.x},${d.y})`;
+                        });
+                    });
+                })
+                .catch(err => {
+                    console.error('Graph error:', err);
+                    svg.append('text').attr('x', width/2).attr('y', height/2)
+                        .attr('fill', '#ff4757').attr('text-anchor', 'middle')
+                        .text('Error: ' + err.message);
+                });
+        }
+
+        renderGraph();
+
+        // Auto-refresh every 30s WITHOUT destroying/recreating SVG
+        window.gnRefreshTimer = setInterval(() => {
+            if (!window.gnSim) return;
+            fetch('/api/graph-data')
+                .then(r => r.ok ? r.json() : Promise.reject())
+                .then(data => {
+                    if (!data || !data.nodes || !data.nodes.length) return;
+                    statsText.text(`${data.nodes.length} articles | ${data.edges ? data.edges.length : 0} connections`);
+                    // Merge update: only refresh node colors/signal state, keep positions
+                    data.nodes.forEach(n => {
+                        const ex = window.gnNodeMap.get(n.id);
+                        if (ex) {
+                            ex.color      = n.color;
+                            ex.is_signal  = n.is_signal;
+                            ex.keywords   = n.keywords;
+                            ex.full_title = n.full_title;
+                            ex.source     = n.source;
+                            ex.sentiment  = n.sentiment;
+                        }
+                    });
+                    // Restart sim gently
+                    window.gnSim.alpha(0.1).restart();
+                }).catch(() => {});
+        }, 30000);
+    }
+    """
+
+
+# Build the D3.js graph - single, self-contained callback
+# The buildGraph function is passed as a Dash clientside callback
+# so Dash serializes it into the page as a real JavaScript function.
+_buildGraphJS = build_graph_script()
+
+app.clientside_callback(
+    _buildGraphJS,
+    Output("graph-container", "children"),
+    Input("refresh-interval", "n_intervals")
+)
+
 
 if __name__ == "__main__":
     print("🌐 Starting Golden News Dashboard...")
