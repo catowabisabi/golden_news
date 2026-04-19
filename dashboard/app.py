@@ -176,6 +176,10 @@ def get_graph_data():
 # API ENDPOINTS
 # =============================================================================
 
+@server.route('/health')
+def health():
+    return jsonify({"status": "ok"})
+
 @server.route('/api/graph-data')
 def api_graph_data():
     data = get_graph_data()
