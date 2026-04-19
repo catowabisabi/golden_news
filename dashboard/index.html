@@ -1,787 +1,536 @@
-# Golden News Dashboard - Standalone HTML with D3.js
-# This file can be opened directly in a browser
-# It connects to the WebSocket server at ws://localhost:8765
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Golden News - Real-Time News Intelligence</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Golden News - Signal Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
 
-        :root {
-            --bg: #0a0e17;
-            --card: #1a1f2e;
-            --gold: #ffd700;
-            --cyan: #00d4ff;
-            --green: #00ff88;
-            --red: #ff4757;
-            --text: #e0e0e0;
-            --muted: #6b7280;
-        }
+:root {
+  --bg:#0a0e17; --card:#141926; --card-hi:#1a2030;
+  --gold:#ffd700; --cyan:#00d4ff;
+  --green:#00ff88; --red:#ff4757; --amber:#ffb800;
+  --text:#e0e0e0; --muted:#6b7280; --line:rgba(255,255,255,0.06);
+}
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            overflow-x: hidden;
-        }
+body {
+  font-family:'Inter',-apple-system,sans-serif;
+  background:var(--bg); color:var(--text);
+  min-height:100vh; overflow-x:hidden;
+}
 
-        /* Header */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px 30px;
-            background: var(--card);
-            border-bottom: 1px solid rgba(255, 215, 0, 0.15);
-        }
+/* Header */
+.header {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:16px 28px; background:var(--card);
+  border-bottom:1px solid rgba(255,215,0,0.12);
+  position:sticky; top:0; z-index:50;
+}
+.brand { display:flex; align-items:center; gap:12px; }
+.brand-logo { font-size:22px; font-weight:800; color:var(--gold); letter-spacing:-0.5px; }
+.brand-tag { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1.2px; }
+.status { display:flex; align-items:center; gap:18px; font-size:12px; }
+.live-dot { width:8px; height:8px; background:var(--green); border-radius:50%; animation:pulse 1.5s infinite; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+.stat { color:var(--muted); }
+.stat b { color:var(--text); font-weight:600; }
+.stat .gold { color:var(--gold); }
 
-        .logo {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--gold);
-        }
+/* Layout */
+.main { padding:24px 28px 60px; max-width:1600px; margin:0 auto; }
+.section-title {
+  display:flex; align-items:center; gap:10px;
+  font-size:13px; font-weight:600; color:var(--muted);
+  text-transform:uppercase; letter-spacing:1.5px;
+  margin:32px 0 14px;
+}
+.section-title:first-child { margin-top:8px; }
+.section-title .count {
+  background:rgba(255,215,0,0.12); color:var(--gold);
+  padding:2px 8px; border-radius:10px; font-size:10px;
+  letter-spacing:0.5px;
+}
 
-        .status {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            font-size: 12px;
-        }
+/* Hero signals (top picks) */
+.hero {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+  gap:14px;
+}
+.hero-card {
+  background:linear-gradient(135deg,var(--card) 0%,var(--card-hi) 100%);
+  border:1px solid var(--line);
+  border-left:4px solid var(--muted);
+  border-radius:12px; padding:18px 20px;
+  cursor:pointer; transition:transform 0.15s,border-color 0.15s;
+  text-decoration:none; color:inherit; display:block;
+  position:relative; overflow:hidden;
+}
+.hero-card:hover { transform:translateY(-2px); border-color:rgba(255,215,0,0.4); }
+.hero-card.long  { border-left-color:var(--green); }
+.hero-card.short { border-left-color:var(--red); }
+.hero-card.neutral { border-left-color:var(--muted); }
+.hero-card.stale { opacity:0.55; }
 
-        .live-dot {
-            width: 8px; height: 8px;
-            background: var(--green);
-            border-radius: 50%;
-            animation: pulse 1.5s infinite;
-        }
+.hero-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.hero-dir {
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:11px; font-weight:800; letter-spacing:1px;
+  padding:4px 10px; border-radius:4px;
+}
+.hero-dir.long { background:rgba(0,255,136,0.12); color:var(--green); }
+.hero-dir.short { background:rgba(255,71,87,0.12); color:var(--red); }
+.hero-dir.neutral { background:rgba(107,114,128,0.15); color:var(--muted); }
+.hero-asset {
+  font-size:10px; font-weight:700; color:var(--gold);
+  background:rgba(255,215,0,0.08); padding:3px 8px; border-radius:4px;
+  letter-spacing:0.8px; text-transform:uppercase;
+}
+.hero-conf {
+  font-size:18px; font-weight:700; color:var(--text);
+}
+.hero-conf .pct { font-size:11px; color:var(--muted); margin-left:2px; }
+.hero-headline {
+  font-size:14px; line-height:1.45; color:var(--text);
+  font-weight:500; margin:8px 0 12px;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.hero-meta {
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:10px; color:var(--muted); padding-top:10px;
+  border-top:1px solid var(--line);
+}
+.hero-meta .horizon { color:var(--cyan); font-weight:600; text-transform:uppercase; letter-spacing:0.8px; }
+.score-bar {
+  position:absolute; bottom:0; left:0; height:2px;
+  background:linear-gradient(90deg,var(--gold),var(--cyan));
+}
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
+/* Asset overview chart */
+.chart-wrap {
+  background:var(--card); border:1px solid var(--line);
+  border-radius:12px; padding:20px;
+}
+#asset-chart { width:100%; height:260px; }
+.chart-empty {
+  text-align:center; color:var(--muted); font-size:13px;
+  padding:60px 20px;
+}
 
-        /* Main Layout */
-        .main {
-            display: flex;
-            height: calc(100vh - 80px);
-        }
+/* Signal list (compact) */
+.signal-list { display:flex; flex-direction:column; gap:6px; }
+.signal-row {
+  display:grid;
+  grid-template-columns:60px 80px 60px 1fr 110px 90px;
+  align-items:center; gap:14px;
+  background:var(--card); border:1px solid var(--line);
+  border-radius:8px; padding:12px 16px;
+  text-decoration:none; color:inherit;
+  transition:background 0.15s,border-color 0.15s;
+}
+.signal-row:hover { background:var(--card-hi); border-color:rgba(255,215,0,0.2); }
+.signal-row.stale { opacity:0.5; }
+.dir-tag { font-size:11px; font-weight:800; letter-spacing:0.8px; }
+.dir-tag.long { color:var(--green); }
+.dir-tag.short { color:var(--red); }
+.dir-tag.neutral { color:var(--muted); }
+.asset-tag {
+  font-size:10px; font-weight:700; color:var(--gold);
+  text-transform:uppercase; letter-spacing:0.8px;
+  cursor:pointer; user-select:none;
+}
+.asset-tag:hover { text-decoration:underline; }
+.asset-tag.boosted::after { content:' ★'; color:var(--cyan); }
+.conf-cell {
+  font-size:13px; font-weight:600; color:var(--text); text-align:right;
+}
+.conf-bar {
+  width:100%; height:3px; background:rgba(255,255,255,0.05);
+  border-radius:2px; margin-top:3px; overflow:hidden;
+}
+.conf-bar > div { height:100%; background:var(--gold); }
+.headline-cell {
+  font-size:13px; line-height:1.4; color:var(--text);
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.source-cell { font-size:10px; color:var(--muted); text-align:right; }
+.horizon-cell {
+  font-size:9px; color:var(--cyan); font-weight:600;
+  text-transform:uppercase; letter-spacing:0.6px;
+}
+.age-cell { font-size:11px; color:var(--muted); text-align:right; }
 
-        /* Left: Graph */
-        .graph-panel {
-            flex: 1.5;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-        }
+/* News strip (collapsed) */
+.news-toggle {
+  display:flex; align-items:center; gap:10px;
+  background:transparent; border:none; cursor:pointer;
+  font:inherit; color:inherit; padding:0;
+}
+.news-toggle:hover .section-title { color:var(--text); }
+.chev { color:var(--muted); transition:transform 0.2s; }
+.chev.open { transform:rotate(90deg); }
 
-        .panel-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+.news-list { display:none; flex-direction:column; gap:1px; }
+.news-list.open { display:flex; }
+.news-row {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 16px; background:var(--card);
+  border-bottom:1px solid var(--line);
+  text-decoration:none; color:inherit; gap:14px;
+  font-size:12px;
+}
+.news-row:first-child { border-radius:8px 8px 0 0; }
+.news-row:last-child { border-radius:0 0 8px 8px; border-bottom:none; }
+.news-row:hover { background:var(--card-hi); }
+.news-title {
+  flex:1; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.news-meta { display:flex; gap:14px; flex-shrink:0; font-size:10px; color:var(--muted); }
+.news-meta .src { color:var(--gold); }
+.news-meta .pos { color:var(--green); }
+.news-meta .neg { color:var(--red); }
+.news-meta .neu { color:var(--muted); }
 
-        .graph-container {
-            flex: 1;
-            background: var(--card);
-            border-radius: 12px;
-            overflow: hidden;
-            position: relative;
-        }
+.empty {
+  text-align:center; color:var(--muted); padding:40px 20px;
+  background:var(--card); border:1px dashed var(--line); border-radius:12px;
+}
+.empty .ico { font-size:32px; opacity:0.4; margin-bottom:8px; }
 
-        #graph {
-            width: 100%;
-            height: 100%;
-        }
+::-webkit-scrollbar { width:8px; height:8px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:rgba(255,215,0,0.3); border-radius:4px; }
+::-webkit-scrollbar-thumb:hover { background:var(--gold); }
 
-        .node {
-            cursor: pointer;
-        }
-
-        .node circle {
-            transition: all 0.3s ease;
-        }
-
-        .node:hover circle {
-            stroke: var(--gold);
-            stroke-width: 3px;
-        }
-
-        .node text {
-            font-size: 8px;
-            fill: var(--text);
-            pointer-events: none;
-            font-family: 'Inter', sans-serif;
-        }
-
-        .link {
-            stroke: rgba(255, 215, 0, 0.15);
-            stroke-width: 1px;
-        }
-
-        .link.strong {
-            stroke: rgba(255, 215, 0, 0.5);
-            stroke-width: 2px;
-        }
-
-        /* Right: Sidebar */
-        .sidebar {
-            width: 420px;
-            padding: 20px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        /* Signal Cards */
-        .signals-section {
-            background: var(--card);
-            border-radius: 12px;
-            padding: 20px;
-        }
-
-        .signal-card {
-            background: var(--bg);
-            border-radius: 8px;
-            padding: 14px;
-            margin-bottom: 10px;
-            border-left: 3px solid var(--muted);
-        }
-
-        .signal-card.long { border-left-color: var(--green); }
-        .signal-card.short { border-left-color: var(--red); }
-        .signal-card.neutral { border-left-color: var(--muted); }
-
-        .signal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .signal-direction {
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-        }
-
-        .signal-direction.long { color: var(--green); }
-        .signal-direction.short { color: var(--red); }
-        .signal-direction.neutral { color: var(--muted); }
-
-        .signal-asset {
-            font-size: 10px;
-            font-weight: 600;
-            padding: 2px 6px;
-            border-radius: 4px;
-            background: rgba(255,255,255,0.1);
-        }
-
-        .signal-confidence {
-            font-size: 10px;
-            color: var(--muted);
-        }
-
-        .signal-headline {
-            font-size: 12px;
-            line-height: 1.5;
-            color: var(--text);
-        }
-
-        .signal-meta {
-            font-size: 10px;
-            color: var(--muted);
-            margin-top: 6px;
-        }
-
-        /* Articles List */
-        .articles-section {
-            background: var(--card);
-            border-radius: 12px;
-            padding: 20px;
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .article-item {
-            padding: 12px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
-
-        .article-title {
-            font-size: 12px;
-            line-height: 1.4;
-            color: var(--text);
-            margin-bottom: 6px;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .article-meta {
-            font-size: 10px;
-            color: var(--muted);
-            display: flex;
-            gap: 10px;
-        }
-
-        .article-source { color: var(--gold); }
-        .article-sentiment.positive { color: var(--green); }
-        .article-sentiment.negative { color: var(--red); }
-        .article-sentiment.neutral { color: var(--muted); }
-
-        /* Tooltip */
-        .tooltip {
-            position: absolute;
-            background: var(--card);
-            border: 1px solid var(--gold);
-            border-radius: 8px;
-            padding: 12px;
-            font-size: 12px;
-            max-width: 300px;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.2s;
-            z-index: 100;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-
-        .tooltip.visible { opacity: 1; }
-        .tooltip-title { font-weight: 600; margin-bottom: 6px; color: var(--text); }
-        .tooltip-meta { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
-        .tooltip-keywords { font-size: 10px; color: var(--cyan); }
-
-        /* Legend */
-        .legend {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(26, 31, 46, 0.9);
-            border-radius: 8px;
-            padding: 12px 16px;
-            font-size: 10px;
-        }
-
-        .legend-title {
-            color: var(--gold);
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 4px;
-        }
-
-        .legend-dot {
-            width: 8px; height: 8px;
-            border-radius: 50%;
-        }
-
-        /* Controls */
-        .controls {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn {
-            padding: 8px 16px;
-            background: var(--card);
-            border: 1px solid rgba(255,215,0,0.3);
-            border-radius: 6px;
-            color: var(--gold);
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .btn:hover {
-            background: var(--gold);
-            color: var(--bg);
-        }
-
-        /* Node count slider */
-        .slider-control {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(26, 31, 46, 0.9);
-            border-radius: 8px;
-            padding: 10px 14px;
-            font-size: 11px;
-        }
-
-        .slider-control label {
-            color: var(--gold);
-            font-weight: 600;
-            margin-right: 8px;
-        }
-
-        .slider-control input[type="range"] {
-            width: 120px;
-            accent-color: var(--gold);
-        }
-
-        .slider-control span {
-            color: var(--text);
-            margin-left: 6px;
-        }
-
-        /* Empty state */
-        .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--muted);
-            font-size: 14px;
-            gap: 15px;
-        }
-
-        .empty-icon { font-size: 48px; opacity: 0.5; }
-
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: var(--bg); }
-        ::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 3px; }
-    </style>
+@media (max-width:880px) {
+  .signal-row {
+    grid-template-columns:60px 70px 1fr;
+    grid-template-areas:
+      'dir asset conf'
+      'head head head'
+      'src src horizon';
+    gap:8px;
+  }
+  .source-cell, .horizon-cell, .age-cell, .headline-cell { text-align:left; }
+}
+</style>
 </head>
 <body>
-    <div class="header">
-        <div class="logo">🏆 Golden News</div>
-        <div class="status">
-            <div class="live-dot"></div>
-            <span style="color: var(--green)">LIVE</span>
-            <span id="last-update" style="color: var(--muted)">Connecting...</span>
-            <span style="color: var(--muted); margin-left: 10px;">|</span>
-            <span id="article-count" style="color: var(--text)">0 articles</span>
-            <span style="color: var(--muted);">|</span>
-            <span id="signal-count" style="color: var(--gold)">0 signals</span>
+
+<header class="header">
+  <div class="brand">
+    <div class="brand-logo">🏆 Golden News</div>
+    <div class="brand-tag">Signal Intelligence</div>
+  </div>
+  <div class="status">
+    <div style="display:flex;align-items:center;gap:8px"><span class="live-dot"></span><span style="color:var(--green);font-weight:600">LIVE</span></div>
+    <span class="stat"><b id="stat-signals">0</b> signals</span>
+    <span class="stat"><b class="gold" id="stat-strong">0</b> strong</span>
+    <span class="stat" id="last-update">—</span>
+  </div>
+</header>
+
+<main class="main">
+
+  <div class="section-title">🎯 Top Picks <span class="count" id="hero-count">0</span></div>
+  <div class="hero" id="hero">
+    <div class="empty"><div class="ico">⚡</div>No signals yet.<br><span style="font-size:11px">Run the AI analyzer to generate signals.</span></div>
+  </div>
+
+  <div class="section-title">📊 Asset Overview</div>
+  <div class="chart-wrap">
+    <div id="asset-chart"></div>
+    <div id="asset-empty" class="chart-empty" style="display:none">No active signals to plot.</div>
+  </div>
+
+  <div class="section-title">📋 All Signals <span class="count" id="all-count">0</span></div>
+  <div class="signal-list" id="signal-list"></div>
+
+  <button class="news-toggle" onclick="toggleNews()" style="margin-top:32px">
+    <span class="chev" id="news-chev">▶</span>
+    <span class="section-title" style="margin:0">📰 Latest News <span class="count" id="news-count">0</span></span>
+  </button>
+  <div class="news-list" id="news-list"></div>
+
+</main>
+
+<script>
+const API_BASE = location.protocol === 'file:' ? 'http://localhost:8050' : '';
+const REFRESH_MS = 30000;
+
+// Half-life in minutes (controls freshness decay)
+const HALF_LIFE = { 'intraday': 60, 'short-term': 360, 'medium-term': 1440 };
+// Stale threshold in minutes (signals dimmed beyond this)
+const STALE_AT  = { 'intraday': 240, 'short-term': 1440, 'medium-term': 4320 };
+
+// User interest: { asset_class: clickCount } — persisted in localStorage
+const INTEREST_KEY = 'gn:interest:v1';
+let interest = loadInterest();
+
+function loadInterest() {
+  try { return JSON.parse(localStorage.getItem(INTEREST_KEY)) || {}; }
+  catch { return {}; }
+}
+function saveInterest() {
+  localStorage.setItem(INTEREST_KEY, JSON.stringify(interest));
+}
+function boostAsset(asset) {
+  if (!asset) return;
+  interest[asset] = (interest[asset] || 0) + 1;
+  saveInterest();
+  render();  // re-rank instantly
+}
+
+function ageMinutes(iso) {
+  if (!iso) return 9999;
+  const t = Date.parse(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z');
+  if (isNaN(t)) return 9999;
+  return Math.max(0, (Date.now() - t) / 60000);
+}
+
+function freshnessDecay(ageMin, horizon) {
+  const hl = HALF_LIFE[horizon] || 360;
+  return Math.exp(-0.693 * ageMin / hl);
+}
+
+function isStale(ageMin, horizon) {
+  return ageMin > (STALE_AT[horizon] || 1440);
+}
+
+function interestBoost(asset) {
+  const totalClicks = Object.values(interest).reduce((a, b) => a + b, 0);
+  if (!totalClicks) return 0;
+  return 0.5 * ((interest[asset] || 0) / totalClicks);
+}
+
+function score(sig) {
+  const age = ageMinutes(sig.generated_at || sig.article_published_at);
+  const fresh = freshnessDecay(age, sig.time_horizon);
+  const conf  = sig.confidence || 0.5;
+  const boost = interestBoost(sig.asset_class);
+  return fresh * conf * (1 + boost);
+}
+
+function formatAge(min) {
+  if (min < 1) return 'now';
+  if (min < 60) return Math.round(min) + 'm ago';
+  if (min < 1440) return Math.round(min / 60) + 'h ago';
+  return Math.round(min / 1440) + 'd ago';
+}
+
+function dirClass(d) { return (d || 'neutral').toLowerCase(); }
+
+let lastSignals = [];
+let lastArticles = [];
+let chart = null;
+
+async function fetchAll() {
+  try {
+    const [sigRes, artRes] = await Promise.all([
+      fetch(API_BASE + '/api/signals'),
+      fetch(API_BASE + '/api/articles')
+    ]);
+    if (!sigRes.ok || !artRes.ok) throw new Error('API error');
+    lastSignals = await sigRes.json();
+    lastArticles = await artRes.json();
+    document.getElementById('last-update').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+    render();
+  } catch (e) {
+    document.getElementById('last-update').textContent = 'Connection lost — retrying';
+  }
+}
+
+function render() {
+  // Sort by score (interest-weighted, freshness-decayed)
+  const ranked = lastSignals
+    .map(s => ({ ...s, _score: score(s), _age: ageMinutes(s.generated_at || s.article_published_at) }))
+    .sort((a, b) => b._score - a._score);
+
+  document.getElementById('stat-signals').textContent = ranked.length;
+  document.getElementById('stat-strong').textContent =
+    ranked.filter(s => s.confidence >= 0.7 && !isStale(s._age, s.time_horizon)).length;
+
+  renderHero(ranked.slice(0, 4));
+  renderAssetChart(ranked.filter(s => !isStale(s._age, s.time_horizon)));
+  renderSignalList(ranked);
+  renderNews(lastArticles);
+}
+
+function renderHero(top) {
+  const hero = document.getElementById('hero');
+  document.getElementById('hero-count').textContent = top.length;
+  if (!top.length) {
+    hero.innerHTML = '<div class="empty"><div class="ico">⚡</div>No signals yet.<br><span style="font-size:11px">Run the AI analyzer to generate signals.</span></div>';
+    return;
+  }
+  const maxScore = top[0]._score || 1;
+  hero.innerHTML = top.map(s => {
+    const dir = dirClass(s.direction);
+    const stale = isStale(s._age, s.time_horizon);
+    const conf = Math.round((s.confidence || 0) * 100);
+    const url = s.article_url || '#';
+    const widthPct = Math.max(8, Math.round((s._score / maxScore) * 100));
+    return `
+      <a class="hero-card ${dir}${stale ? ' stale' : ''}" href="${url}" target="_blank" rel="noopener">
+        <div class="hero-row">
+          <span class="hero-dir ${dir}">${(s.direction || 'NEUTRAL').toUpperCase()}</span>
+          <span class="hero-asset" data-asset="${s.asset_class || ''}" onclick="event.preventDefault();event.stopPropagation();boostAsset('${s.asset_class || ''}')">${s.asset_class || 'multi'}</span>
         </div>
-    </div>
-
-    <div class="main">
-        <div class="graph-panel">
-            <div class="panel-title">📊 News Relationship Graph</div>
-            <div class="graph-container">
-                <svg id="graph"></svg>
-
-                <!-- Controls: Node count slider -->
-                <div class="slider-control">
-                    <label>Nodes:</label>
-                    <input type="range" id="nodeSlider" min="5" max="30" value="15" oninput="updateNodeLimit(+this.value)">
-                    <span id="nodeLimitDisplay">15</span>
-                </div>
-
-                <div class="legend">
-                    <div class="legend-title">Sentiment</div>
-                    <div class="legend-item"><div class="legend-dot" style="background: var(--green)"></div> Positive</div>
-                    <div class="legend-item"><div class="legend-dot" style="background: var(--red)"></div> Negative</div>
-                    <div class="legend-item"><div class="legend-dot" style="background: var(--muted)"></div> Neutral</div>
-                    <div class="legend-title" style="margin-top: 12px">Lines</div>
-                    <div class="legend-item"><div class="legend-dot" style="background: transparent; border: 1px solid rgba(255,215,0,0.5)"></div> Shared keywords</div>
-                    <div class="legend-item"><div class="legend-dot" style="background: var(--gold)"></div> Trading signal</div>
-                </div>
-
-                <div class="controls">
-                    <button class="btn" onclick="resetZoom()">Reset</button>
-                    <button class="btn" onclick="toggleLabels()">Labels</button>
-                </div>
-            </div>
+        <div class="hero-headline">${escapeHtml(s.headline || s.article_title || '—')}</div>
+        <div class="hero-meta">
+          <span class="horizon">${s.time_horizon || '—'}</span>
+          <span>${formatAge(s._age)} • <b style="color:var(--text)">${conf}%</b></span>
         </div>
+        <div class="score-bar" style="width:${widthPct}%"></div>
+      </a>`;
+  }).join('');
+}
 
-        <div class="sidebar">
-            <div class="signals-section">
-                <div class="panel-title">⚡ Trading Signals</div>
-                <div id="signals-list">
-                    <div class="empty-state">
-                        <div class="empty-icon">⚡</div>
-                        <div>No signals yet</div>
-                        <div style="font-size: 11px">AI signals will appear here</div>
-                    </div>
-                </div>
-            </div>
+function renderAssetChart(signals) {
+  const wrap = document.getElementById('asset-chart');
+  const empty = document.getElementById('asset-empty');
+  if (!signals.length) {
+    wrap.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  wrap.style.display = 'block';
+  empty.style.display = 'none';
 
-            <div class="articles-section">
-                <div class="panel-title">📰 Latest Articles</div>
-                <div id="articles-list">
-                    <div class="empty-state">
-                        <div class="empty-icon">📰</div>
-                        <div>No articles yet</div>
-                        <div style="font-size: 11px">Run collector.py to fetch news</div>
-                    </div>
-                </div>
-            </div>
+  // Aggregate confidence per asset class, signed by direction
+  const agg = {};
+  signals.forEach(s => {
+    const a = s.asset_class || 'multi';
+    if (!agg[a]) agg[a] = { long: 0, short: 0, count: 0 };
+    if (s.direction === 'long')  agg[a].long  += s.confidence || 0;
+    if (s.direction === 'short') agg[a].short += s.confidence || 0;
+    agg[a].count += 1;
+  });
+
+  const assets = Object.keys(agg).sort((a, b) => (agg[b].long + agg[b].short) - (agg[a].long + agg[a].short));
+  const longs  = assets.map(a =>  agg[a].long.toFixed(2));
+  const shorts = assets.map(a => -agg[a].short.toFixed(2));
+
+  if (!chart) chart = echarts.init(wrap, null, { renderer: 'canvas' });
+  chart.setOption({
+    backgroundColor: 'transparent',
+    grid: { top: 30, right: 30, bottom: 30, left: 90 },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1a2030',
+      borderColor: 'rgba(255,215,0,0.3)',
+      textStyle: { color: '#e0e0e0', fontFamily: 'Inter' },
+      axisPointer: { type: 'shadow' },
+      formatter: function (params) {
+        const asset = params[0].axisValue;
+        const long = params.find(p => p.seriesName === 'LONG');
+        const short = params.find(p => p.seriesName === 'SHORT');
+        return `<b style="color:#ffd700">${asset.toUpperCase()}</b><br>` +
+               `<span style="color:#00ff88">▲ LONG ${long ? long.value : 0}</span><br>` +
+               `<span style="color:#ff4757">▼ SHORT ${short ? Math.abs(short.value) : 0}</span><br>` +
+               `<span style="color:#888;font-size:10px">${agg[asset].count} signal(s)</span>`;
+      }
+    },
+    legend: {
+      data: ['LONG', 'SHORT'], textStyle: { color: '#888', fontFamily: 'Inter', fontSize: 11 },
+      right: 20, top: 4, itemHeight: 8, itemWidth: 14
+    },
+    xAxis: {
+      type: 'value',
+      axisLine: { lineStyle: { color: '#2a2f3e' } },
+      axisLabel: { color: '#6b7280', fontFamily: 'Inter', fontSize: 10, formatter: v => Math.abs(v).toFixed(1) },
+      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+    },
+    yAxis: {
+      type: 'category',
+      data: assets.map(a => a.toUpperCase()),
+      axisLine: { lineStyle: { color: '#2a2f3e' } },
+      axisLabel: { color: '#e0e0e0', fontFamily: 'Inter', fontSize: 11, fontWeight: 600 },
+      axisTick: { show: false }
+    },
+    series: [
+      {
+        name: 'LONG', type: 'bar', stack: 'net',
+        data: longs, itemStyle: { color: '#00ff88', borderRadius: [0, 3, 3, 0] },
+        barMaxWidth: 18
+      },
+      {
+        name: 'SHORT', type: 'bar', stack: 'net',
+        data: shorts, itemStyle: { color: '#ff4757', borderRadius: [3, 0, 0, 3] },
+        barMaxWidth: 18
+      }
+    ]
+  });
+  chart.resize();
+}
+
+function renderSignalList(signals) {
+  const list = document.getElementById('signal-list');
+  document.getElementById('all-count').textContent = signals.length;
+  if (!signals.length) {
+    list.innerHTML = '';
+    return;
+  }
+  list.innerHTML = signals.map(s => {
+    const dir = dirClass(s.direction);
+    const stale = isStale(s._age, s.time_horizon);
+    const conf = Math.round((s.confidence || 0) * 100);
+    const boosted = (interest[s.asset_class] || 0) > 0;
+    const url = s.article_url || '#';
+    return `
+      <a class="signal-row ${stale ? 'stale' : ''}" href="${url}" target="_blank" rel="noopener">
+        <span class="dir-tag ${dir}">${(s.direction || 'NEU').toUpperCase()}</span>
+        <span class="asset-tag ${boosted ? 'boosted' : ''}" onclick="event.preventDefault();event.stopPropagation();boostAsset('${s.asset_class || ''}')">${s.asset_class || 'multi'}</span>
+        <div class="conf-cell">${conf}%
+          <div class="conf-bar"><div style="width:${conf}%"></div></div>
         </div>
-    </div>
+        <div class="headline-cell">${escapeHtml(s.headline || s.article_title || '—')}</div>
+        <span class="horizon-cell">${s.time_horizon || ''}</span>
+        <span class="age-cell">${formatAge(s._age)}</span>
+      </a>`;
+  }).join('');
+}
 
-    <div class="tooltip" id="tooltip">
-        <div class="tooltip-title" id="tt-title"></div>
-        <div class="tooltip-meta" id="tt-meta"></div>
-        <div class="tooltip-keywords" id="tt-keywords"></div>
-    </div>
+function renderNews(articles) {
+  const list = document.getElementById('news-list');
+  document.getElementById('news-count').textContent = articles.length;
+  if (!articles.length) { list.innerHTML = ''; return; }
+  list.innerHTML = articles.slice(0, 30).map(a => {
+    const sent = (a.sentiment_label || 'neutral').slice(0, 3);
+    const cls = a.sentiment_label === 'positive' ? 'pos' : a.sentiment_label === 'negative' ? 'neg' : 'neu';
+    return `
+      <a class="news-row" href="${a.url || '#'}" target="_blank" rel="noopener">
+        <span class="news-title">${escapeHtml(a.title || '—')}</span>
+        <span class="news-meta">
+          <span class="src">${escapeHtml((a.source_name || '').slice(0, 18))}</span>
+          <span class="${cls}">${sent}</span>
+          <span>${formatAge(ageMinutes(a.published_at || a.fetched_at))}</span>
+        </span>
+      </a>`;
+  }).join('');
+}
 
-    <script>
-        // WebSocket connection
-        let ws;
-        let allArticles = [];  // Store ALL articles
-        let graphData = { nodes: [], edges: [], signals: [] };
-        let showLabels = true;
-        let simulation;
-        let nodeLimit = 15;  // Default limit
+function toggleNews() {
+  document.getElementById('news-list').classList.toggle('open');
+  document.getElementById('news-chev').classList.toggle('open');
+}
 
-        function connect() {
-            ws = new WebSocket('ws://localhost:8765');
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
 
-            ws.onopen = () => {
-                console.log('Connected to Golden News WebSocket');
-                document.getElementById('last-update').textContent = 'Connected';
-                ws.send(JSON.stringify({ command: 'get_latest', minutes: 1440, limit: 50 }));
-                ws.send(JSON.stringify({ command: 'get_signals', limit: 10 }));
-            };
+window.addEventListener('resize', () => chart && chart.resize());
 
-            ws.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'latest_articles') {
-                    allArticles = msg.data || [];
-                    rebuildGraph();
-                } else if (msg.type === 'trading_signals') {
-                    updateSignals(msg.data);
-                } else if (msg.type === 'new_article') {
-                    if (msg.data && msg.data.title) {
-                        allArticles.push(msg.data);
-                        rebuildGraph();
-                    }
-                    document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
-                }
-            };
-
-            ws.onclose = () => {
-                document.getElementById('last-update').textContent = 'Disconnected - Reconnecting...';
-                setTimeout(connect, 3000);
-            };
-        }
-
-        function updateNodeLimit(n) {
-            nodeLimit = n;
-            document.getElementById('nodeLimitDisplay').textContent = n;
-            rebuildGraph();
-        }
-
-        function rebuildGraph() {
-            // Limit articles to nodeLimit
-            const articles = allArticles.slice(0, nodeLimit);
-            const nodeMap = new Map();
-
-            // Build keywords map for each article
-            articles.forEach(art => {
-                if (!art.title) return;
-                const text = (art.title + ' ' + (art.summary || '')).toLowerCase();
-                const words = text.match(/\b\w{4,}\b/g) || [];
-                const stopWords = new Set([
-                    'that', 'this', 'with', 'from', 'have', 'been', 'were',
-                    'they', 'what', 'when', 'where', 'which', 'about',
-                    'would', 'could', 'your', 'more', 'than', 'after',
-                    'also', 'into', 'some', 'will', 'their', 'there',
-                    'would', 'could', 'just', 'only', 'over', 'such',
-                    'before', 'after', 'being', 'through', 'because'
-                ]);
-                const keywords = [...new Set(words.filter(w => !stopWords.has(w)))].slice(0, 10);
-
-                const sentiment = art.sentiment_label || 'neutral';
-                const colors = { positive: '#00ff88', negative: '#ff4757', neutral: '#6b7280' };
-                const size = art.is_trading_signal ? 14 : 7;
-
-                nodeMap.set(art.id, {
-                    id: art.id,
-                    // Show article TITLE (not just source) as label
-                    label: art.title.length > 35 ? art.title.slice(0, 35) + '...' : art.title,
-                    fullTitle: art.title,
-                    url: art.url,
-                    source: art.source_name || 'Unknown',
-                    sentiment: sentiment,
-                    color: colors[sentiment],
-                    size: size,
-                    isSignal: art.is_trading_signal,
-                    keywords: keywords,
-                    // Spread nodes in a grid pattern initially to reduce initial overlap
-                    x: 0,
-                    y: 0
-                });
-            });
-
-            // Build edges - articles share 3+ keywords get connected
-            const edges = [];
-            const nodes = Array.from(nodeMap.values());
-
-            for (let i = 0; i < nodes.length; i++) {
-                for (let j = i + 1; j < nodes.length; j++) {
-                    const a = nodes[i];
-                    const b = nodes[j];
-                    const shared = a.keywords.filter(k => b.keywords.includes(k));
-                    if (shared.length >= 3) {
-                        edges.push({
-                            source: a.id,
-                            target: b.id,
-                            strength: Math.min(shared.length * 0.12, 0.9),
-                            shared: shared.slice(0, 4)
-                        });
-                    }
-                }
-            }
-
-            graphData.nodes = nodes;
-            graphData.edges = edges;
-
-            document.getElementById('article-count').textContent = `${nodes.length} nodes, ${edges.length} connections`;
-            renderGraph();
-            renderArticles();
-        }
-
-        function updateSignals(signals) {
-            graphData.signals = signals || [];
-            document.getElementById('signal-count').textContent = `${graphData.signals.length} signals`;
-            renderSignals();
-        }
-
-        function renderGraph() {
-            const svg = d3.select('#graph');
-            const container = document.querySelector('.graph-container');
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-
-            svg.attr('width', width).attr('height', height);
-            svg.selectAll('*').remove();
-
-            if (graphData.nodes.length === 0) return;
-
-            // Create zoom
-            const zoom = d3.zoom()
-                .scaleExtent([0.1, 5])
-                .on('zoom', (event) => {
-                    g.attr('transform', event.transform);
-                });
-
-            svg.call(zoom);
-
-            const g = svg.append('g');
-
-            // Links
-            const links = g.append('g')
-                .selectAll('line')
-                .data(graphData.edges)
-                .enter()
-                .append('line')
-                .attr('class', d => 'link ' + (d.strength > 0.4 ? 'strong' : ''))
-                .attr('stroke', d => `rgba(255, 215, 0, ${d.strength})`)
-                .attr('stroke-width', d => Math.max(d.strength * 2, 0.5));
-
-            // Nodes
-            const nodes = g.append('g')
-                .selectAll('g')
-                .data(graphData.nodes)
-                .enter()
-                .append('g')
-                .attr('class', 'node')
-                .call(d3.drag()
-                    .on('start', dragstarted)
-                    .on('drag', dragged)
-                    .on('end', dragended));
-
-            nodes.append('circle')
-                .attr('r', d => d.size)
-                .attr('fill', d => d.color)
-                .attr('stroke', d => d.isSignal ? '#ffd700' : 'transparent')
-                .attr('stroke-width', d => d.isSignal ? 3 : 0);
-
-            // Show ARTICLE TITLE as label (not source)
-            nodes.append('text')
-                .text(d => showLabels ? d.label : '')
-                .attr('dy', d => d.size + 12)
-                .attr('text-anchor', 'middle')
-                .each(function(d) {
-                    // If label is long, split into multiple lines
-                    if (d.label.length > 30) {
-                        const words = d.label.split(' ');
-                        let line = '';
-                        let lineNum = 0;
-                        const lineHeight = 11;
-                        d3.select(this).text('');
-                        words.forEach(word => {
-                            const testLine = line + word + ' ';
-                            if (testLine.length > 30 && line !== '') {
-                                d3.select(this).append('tspan')
-                                    .attr('x', 0)
-                                    .attr('dy', lineNum === 0 ? (d.size + 14) : lineHeight)
-                                    .text(line.trim());
-                                line = word + ' ';
-                                lineNum++;
-                            } else {
-                                line = testLine;
-                            }
-                        });
-                        d3.select(this).append('tspan')
-                            .attr('x', 0)
-                            .attr('dy', lineNum === 0 ? (d.size + 14) : lineHeight)
-                            .text(line.trim());
-                    }
-                });
-
-            // Tooltip
-            const tooltip = document.getElementById('tooltip');
-
-            nodes.on('mouseover', (event, d) => {
-                document.getElementById('tt-title').textContent = d.fullTitle;
-                document.getElementById('tt-meta').textContent = `${d.source} | ${d.sentiment}`;
-                document.getElementById('tt-keywords').textContent = '🔗 ' + d.keywords.slice(0, 5).join(', ');
-                tooltip.classList.add('visible');
-                tooltip.style.left = (event.pageX + 15) + 'px';
-                tooltip.style.top = (event.pageY - 10) + 'px';
-            });
-
-            nodes.on('mousemove', (event) => {
-                tooltip.style.left = (event.pageX + 15) + 'px';
-                tooltip.style.top = (event.pageY - 10) + 'px';
-            });
-
-            nodes.on('mouseout', () => {
-                tooltip.classList.remove('visible');
-            });
-
-            nodes.on('click', (event, d) => {
-                if (d.url) window.open(d.url, '_blank');
-            });
-
-            // Force simulation - tuned for readability
-            simulation = d3.forceSimulation(graphData.nodes)
-                .force('link', d3.forceLink(graphData.edges)
-                    .id(d => d.id)
-                    .distance(d => 180 - d.strength * 60))
-                .force('charge', d3.forceManyBody().strength(-350))
-                .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(d => d.size + 25))
-                .force('x', d3.forceX(width / 2).strength(0.03))
-                .force('y', d3.forceY(height / 2).strength(0.03))
-                .on('tick', () => {
-                    links
-                        .attr('x1', d => d.source.x)
-                        .attr('y1', d => d.source.y)
-                        .attr('x2', d => d.target.x)
-                        .attr('y2', d => d.target.y);
-
-                    nodes.attr('transform', d => {
-                        d.x = Math.max(30, Math.min(width - 30, d.x));
-                        d.y = Math.max(30, Math.min(height - 30, d.y));
-                        return `translate(${d.x},${d.y})`;
-                    });
-                });
-
-            function dragstarted(event, d) {
-                if (!event.active) simulation.alphaTarget(0.3).restart();
-                d.fx = d.x;
-                d.fy = d.y;
-            }
-
-            function dragged(event, d) {
-                d.fx = event.x;
-                d.fy = event.y;
-            }
-
-            function dragended(event, d) {
-                if (!event.active) simulation.alphaTarget(0);
-                d.fx = null;
-                d.fy = null;
-            }
-        }
-
-        function renderSignals() {
-            const container = document.getElementById('signals-list');
-            if (!graphData.signals || graphData.signals.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon">⚡</div>
-                        <div>No signals yet</div>
-                        <div style="font-size: 11px">AI signals will appear here</div>
-                    </div>`;
-                return;
-            }
-
-            container.innerHTML = graphData.signals.map(sig => `
-                <div class="signal-card ${sig.direction}">
-                    <div class="signal-header">
-                        <span class="signal-direction ${sig.direction}">${(sig.direction || 'neutral').toUpperCase()}</span>
-                        <span class="signal-asset">${sig.asset_class || 'N/A'}</span>
-                        <span class="signal-confidence">${Math.round((sig.confidence || 0) * 100)}%</span>
-                    </div>
-                    <div class="signal-headline">${sig.headline || 'No headline'}</div>
-                    <div class="signal-meta">${sig.source_name || ''} • ${sig.time_horizon || ''}</div>
-                </div>
-            `).join('');
-        }
-
-        function renderArticles() {
-            const container = document.getElementById('articles-list');
-            if (graphData.nodes.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon">📰</div>
-                        <div>No articles yet</div>
-                    </div>`;
-                return;
-            }
-
-            // Show latest articles from sidebar
-            const articles = allArticles.slice(0, 15);
-            container.innerHTML = articles.map(node => `
-                <div class="article-item">
-                    <a href="${node.url || '#'}" target="_blank" style="text-decoration: none; color: inherit;">
-                        <div class="article-title">${node.title || ''}</div>
-                        <div class="article-meta">
-                            <span class="article-source">${node.source_name || 'Unknown'}</span>
-                            <span class="article-sentiment ${node.sentiment_label || 'neutral'}">${node.sentiment_label || 'neutral'}</span>
-                        </div>
-                    </a>
-                </div>
-            `).join('');
-        }
-
-        function resetZoom() {
-            d3.select('#graph')
-                .transition()
-                .duration(500)
-                .call(d3.zoom().transform, d3.zoomIdentity);
-        }
-
-        function toggleLabels() {
-            showLabels = !showLabels;
-            d3.selectAll('.node text')
-                .style('opacity', showLabels ? 1 : 0);
-        }
-
-        // Resize handler
-        window.addEventListener('resize', () => {
-            if (graphData.nodes.length > 0) renderGraph();
-        });
-
-        // Connect on load
-        connect();
-    </script>
+fetchAll();
+setInterval(fetchAll, REFRESH_MS);
+</script>
 </body>
 </html>
