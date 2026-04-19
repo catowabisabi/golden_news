@@ -183,7 +183,7 @@ def health():
 @server.route('/api/graph-data')
 def api_graph_data():
     data = get_graph_data()
-    return jsonify(data, ensure_ascii=False)
+    return jsonify(data)
 
 @server.route('/api/signals')
 def api_signals():
