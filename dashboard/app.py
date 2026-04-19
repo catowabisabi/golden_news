@@ -68,11 +68,37 @@ def get_active_signals(limit=20):
 
 
 _STOP_WORDS = {
-    "that", "this", "with", "from", "have", "been", "were", "they",
-    "what", "when", "where", "which", "about", "would", "could",
-    "your", "more", "than", "after", "also", "into", "some", "will",
-    "their", "there", "just", "only", "over", "such", "before",
-    "being", "through", "because",
+    # articles / determiners
+    "the", "a", "an",
+    # pronouns
+    "i", "me", "my", "we", "our", "you", "your", "he", "him", "his",
+    "she", "her", "they", "them", "their", "it", "its",
+    # common verbs
+    "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would",
+    "could", "should", "may", "might", "must", "shall",
+    "get", "got", "said", "says", "say", "make", "made",
+    # prepositions / conjunctions
+    "in", "on", "at", "to", "for", "of", "with", "from", "by",
+    "up", "out", "off", "into", "onto", "about", "above", "below",
+    "between", "through", "during", "before", "after", "under",
+    "over", "again", "then", "than", "so", "but", "and", "or",
+    "not", "nor", "yet", "as", "if", "while", "although", "because",
+    "since", "unless", "until", "though", "even",
+    # demonstratives / relatives
+    "this", "that", "these", "those", "which", "who", "whom",
+    "what", "when", "where", "why", "how",
+    # quantifiers / adverbs
+    "all", "any", "both", "each", "few", "more", "most", "other",
+    "some", "such", "only", "just", "also", "very", "much", "many",
+    "well", "still", "now", "here", "there", "then", "too", "back",
+    "already", "always", "often", "ever", "never", "once",
+    # common filler words that pollute keyword graphs
+    "said", "says", "told", "report", "reports", "reported",
+    "news", "new", "year", "years", "week", "weeks", "month",
+    "time", "times", "high", "higher", "low", "lower",
+    "percent", "rate", "data", "based", "according",
+    "amid", "amid", "amid", "against", "without",
 }
 
 
