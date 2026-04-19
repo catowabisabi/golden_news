@@ -3,8 +3,8 @@
   "_note": "For production, encrypt these values!",
 
   "openai": "",
-  "minimax_chat": "***REMOVED***",
-  "minimax_tts": "***REMOVED***",
+  "minimax_chat": "YOUR_NEW_MINIMAX_CHAT_KEY_HERE",
+  "minimax_tts": "YOUR_NEW_MINIMAX_TTS_KEY_HERE",
   "newsapi": "",
   "mediastack": "",
   "bing_search": "",

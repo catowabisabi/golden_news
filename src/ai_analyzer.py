@@ -12,7 +12,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 
-MINIMAX_CHAT_KEY = os.environ.get("MINIMAX_CHAT_KEY", "***REMOVED***")
+MINIMAX_CHAT_KEY = os.environ.get("MINIMAX_CHAT_KEY", "")
 
 class AIAnalyzer:
     def __init__(self):
