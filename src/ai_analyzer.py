@@ -87,12 +87,17 @@ def process_unanalyzed_articles():
     analyzer = AIAnalyzer()
     db = sqlite3.connect(DB_PATH)
 
+    # Sample up to 5 articles from each source to ensure asset-class diversity
     cursor = db.execute("""
-        SELECT id, title, summary, content
-        FROM news_articles
-        WHERE is_analyzed = 0 AND (summary IS NOT NULL OR content IS NOT NULL)
-        ORDER BY fetched_at DESC
-        LIMIT 10
+        SELECT id, title, summary, content FROM (
+            SELECT a.id, a.title, a.summary, a.content, a.source_id,
+                   ROW_NUMBER() OVER (PARTITION BY a.source_id ORDER BY a.fetched_at DESC) AS rn
+            FROM news_articles a
+            WHERE a.is_analyzed = 0 AND (a.summary IS NOT NULL OR a.content IS NOT NULL)
+        )
+        WHERE rn <= 5
+        ORDER BY RANDOM()
+        LIMIT 30
     """)
     articles = cursor.fetchall()
 
