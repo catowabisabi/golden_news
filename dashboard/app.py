@@ -468,20 +468,27 @@ def api_source_status():
 @server.route("/api/scheduler-status")
 def api_scheduler_status():
     with get_db() as db:
-        row = db.execute(
+        queued = db.execute(
             "SELECT COUNT(*) FROM news_articles WHERE is_analyzed=0"
             " AND (summary IS NOT NULL OR content IS NOT NULL)"
-        ).fetchone()
-        queued = row[0] if row else 0
+        ).fetchone()[0]
+        total_signals = db.execute(
+            "SELECT COUNT(*) FROM trading_signals WHERE is_active=1"
+        ).fetchone()[0]
+        strong_signals = db.execute(
+            "SELECT COUNT(*) FROM trading_signals WHERE is_active=1 AND confidence >= 0.7"
+        ).fetchone()[0]
     return jsonify({
-        "status":      _sched["status"],
-        "stage":       _sched["stage"],
-        "progress":    _sched["progress"],
-        "last_fetch":  _sched["last_fetch"],
-        "next_fetch":  _sched["next_fetch"],
-        "fetching":    _sched["fetching"],
-        "paused":      _paused,
-        "queued_count": queued,
+        "status":         _sched["status"],
+        "stage":          _sched["stage"],
+        "progress":       _sched["progress"],
+        "last_fetch":     _sched["last_fetch"],
+        "next_fetch":     _sched["next_fetch"],
+        "fetching":       _sched["fetching"],
+        "paused":         _paused,
+        "queued_count":   queued,
+        "total_signals":  total_signals,
+        "strong_signals": strong_signals,
     })
 
 

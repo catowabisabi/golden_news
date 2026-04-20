@@ -812,9 +812,13 @@ setInterval(async () => {
       else upd.style.color = '';
     }
 
-    // Queue counter
+    // Queue + signal counters from DB totals
     document.getElementById('stat-queued').textContent =
       s.queued_count != null ? s.queued_count : '—';
+    if (s.total_signals != null)
+      document.getElementById('stat-signals').textContent = s.total_signals;
+    if (s.strong_signals != null)
+      document.getElementById('stat-strong').textContent = s.strong_signals;
 
     // Analyzing progress pill
     const pillAn = document.getElementById('pill-analyzing');
