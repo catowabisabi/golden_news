@@ -2,29 +2,26 @@
 """
 Golden News - AI Analyzer
 Generates trading signals and alpha ideas from news using LLM
+Processes up to 500 articles per run using a thread pool for concurrency.
 """
 import sqlite3
 import json
 import os
+import threading
 import anthropic
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 
 MINIMAX_CHAT_KEY = os.environ.get("MINIMAX_CHAT_KEY", "")
+BATCH_SIZE = 500
+MAX_WORKERS = 10  # concurrent API calls
 
-class AIAnalyzer:
-    def __init__(self):
-        self.client = anthropic.Anthropic(
-            base_url='https://api.minimax.io/anthropic',
-            api_key=MINIMAX_CHAT_KEY
-        )
+_db_lock = threading.Lock()
 
-    def analyze_article(self, article_text, title):
-        """Analyze article and generate detailed trading signal"""
-
-        system_prompt = """You are Golden News AI - a financial trading signal generator.
+SYSTEM_PROMPT = """You are Golden News AI - a financial trading signal generator.
 
 For each financial/geopolitical news article, output ONLY a valid JSON object (no markdown, no explanation):
 
@@ -54,40 +51,100 @@ Rules:
 - Think about: price impact, sector correlation, market sentiment, supply/demand
 """
 
-        user_prompt = f"Title: {title}\n\nContent: {article_text[:2000]}"
 
-        try:
-            response = self.client.messages.create(
-                model="MiniMax-M2.7",
-                max_tokens=2000,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}]
-            )
+def _make_client():
+    return anthropic.Anthropic(
+        base_url="https://api.minimax.io/anthropic",
+        api_key=MINIMAX_CHAT_KEY,
+    )
 
-            text = "".join(block.text for block in response.content if block.type == "text")
 
-            # Parse JSON
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            if start != -1 and end != 0:
-                json_str = text[start:end]
-                signal = json.loads(json_str)
-                signal["ai_model"] = "minimax-m2.7"
-                return signal
-        except Exception as e:
-            print(f"      Error: {e}")
+def _analyze_one(article_id, title, summary, content):
+    """Analyze a single article. Returns (article_id, signal_or_None)."""
+    article_text = (summary or content or "").strip()
+    if not article_text:
+        return article_id, None
 
-        return None
+    client = _make_client()
+    user_prompt = f"Title: {title}\n\nContent: {article_text[:2000]}"
+    try:
+        response = client.messages.create(
+            model="MiniMax-M2.7",
+            max_tokens=800,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        text = "".join(b.text for b in response.content if b.type == "text")
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start != -1 and end > start:
+            signal = json.loads(text[start:end])
+            signal["ai_model"] = "minimax-m2.7"
+            return article_id, signal
+    except Exception as e:
+        print(f"      [err] {title[:40]}: {e}")
+    return article_id, None
+
+
+def _save_results(db, results, title_map):
+    """Write all results to DB under a single lock."""
+    saved = 0
+    for article_id, signal in results:
+        title = title_map.get(article_id, "")
+        if signal is None:
+            db.execute("UPDATE news_articles SET is_analyzed=1 WHERE id=?", (article_id,))
+            print(f"   ⏭  {title[:55]}")
+            continue
+
+        if signal.get("signal_type") == "none":
+            db.execute("UPDATE news_articles SET is_analyzed=1 WHERE id=?", (article_id,))
+            print(f"   ⏭  {title[:55]}")
+            continue
+
+        direction = signal.get("direction", "neutral")
+        if direction not in ("long", "short", "neutral"):
+            direction = "neutral"
+
+        db.execute("""
+            INSERT INTO trading_signals
+            (article_id, signal_type, asset_class, direction, confidence,
+             headline, rationale, entry_price, exit_price, stop_loss,
+             time_horizon, ai_model, generated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        """, (
+            article_id,
+            signal.get("signal_type", "alpha"),
+            signal.get("asset_class", "multi"),
+            direction,
+            signal.get("confidence", 0.5),
+            signal.get("headline", ""),
+            signal.get("rationale", ""),
+            signal.get("entry_price", "current"),
+            signal.get("take_profit", ""),
+            signal.get("stop_loss", ""),
+            signal.get("timeframe", "short-term"),
+            signal.get("ai_model", "unknown"),
+        ))
+        db.execute("""
+            UPDATE news_articles SET is_analyzed=1, is_trading_signal=1 WHERE id=?
+        """, (article_id,))
+
+        conf = int(signal.get("confidence", 0) * 100)
+        ticker = signal.get("ticker", "")
+        print(f"   ✅ {direction.upper():7} {signal.get('asset_class',''):12} {conf:3}% {ticker:6}  {title[:40]}")
+        saved += 1
+
+    db.commit()
+    return saved
+
 
 def process_unanalyzed_articles():
-    """Process all unanalyzed articles and generate signals"""
-    print("🤖 Golden News AI Analyzer")
+    print("Golden News AI Analyzer")
     print("=" * 50)
 
-    analyzer = AIAnalyzer()
     db = sqlite3.connect(DB_PATH)
 
-    # Sample up to 5 articles from each source to ensure asset-class diversity
+    # Sample up to 84 per source (~6 sources * 84 = ~500), diverse across asset classes
     cursor = db.execute("""
         SELECT id, title, summary, content FROM (
             SELECT a.id, a.title, a.summary, a.content, a.source_id,
@@ -95,73 +152,39 @@ def process_unanalyzed_articles():
             FROM news_articles a
             WHERE a.is_analyzed = 0 AND (a.summary IS NOT NULL OR a.content IS NOT NULL)
         )
-        WHERE rn <= 5
+        WHERE rn <= 84
         ORDER BY RANDOM()
-        LIMIT 30
-    """)
+        LIMIT ?
+    """, (BATCH_SIZE,))
     articles = cursor.fetchall()
 
     if not articles:
         print("   No new articles to analyze")
         db.close()
-        return
+        return 0
 
-    print(f"   Found {len(articles)} articles to analyze\n")
+    print(f"   Analyzing {len(articles)} articles with {MAX_WORKERS} workers...\n")
+    title_map = {row[0]: row[1] for row in articles}
 
-    for article_id, title, summary, content in articles:
-        article_text = summary or content or ""
-        if not article_text.strip():
-            db.execute("UPDATE news_articles SET is_analyzed = 1 WHERE id = ?", (article_id,))
-            continue
+    results = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(_analyze_one, aid, title, summary, content): aid
+            for aid, title, summary, content in articles
+        }
+        done = 0
+        for future in as_completed(futures):
+            article_id, signal = future.result()
+            results.append((article_id, signal))
+            done += 1
+            if done % 50 == 0:
+                print(f"   ... {done}/{len(articles)} done")
 
-        print(f"   📰 {title[:60]}...")
-
-        signal = analyzer.analyze_article(article_text, title)
-
-        if signal and signal.get("signal_type") != "none":
-            # Determine direction
-            direction = signal.get("direction", "neutral")
-            if direction not in ("long", "short", "neutral"):
-                direction = "neutral"
-
-            # Save trading signal
-            db.execute("""
-                INSERT INTO trading_signals
-                (article_id, signal_type, asset_class, direction, confidence,
-                 headline, rationale, entry_price, exit_price, stop_loss,
-                 time_horizon, ai_model, generated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            """, (
-                article_id,
-                signal.get("signal_type", "alpha"),
-                signal.get("asset_class", "multi"),
-                direction,
-                signal.get("confidence", 0.5),
-                signal.get("headline", ""),
-                signal.get("rationale", ""),
-                signal.get("entry_price", "current"),
-                signal.get("take_profit", ""),
-                signal.get("stop_loss", ""),
-                signal.get("timeframe", "short-term"),
-                signal.get("ai_model", "unknown")
-            ))
-
-            db.execute("""
-                UPDATE news_articles
-                SET is_analyzed = 1, is_trading_signal = 1
-                WHERE id = ?
-            """, (article_id,))
-
-            ticker = signal.get("ticker", "")
-            conf = int(signal.get("confidence", 0) * 100)
-            print(f"      ✅ {direction.upper()} {signal.get('asset_class', '').upper()} | {conf}% | {ticker}")
-        else:
-            db.execute("UPDATE news_articles SET is_analyzed = 1 WHERE id = ?", (article_id,))
-            print(f"      ⏭️  No signal")
-
-    db.commit()
+    saved = _save_results(db, results, title_map)
     db.close()
-    print("\n🎉 Analysis complete!")
+    print(f"\nDone — {saved} signals saved from {len(articles)} articles.")
+    return saved
+
 
 if __name__ == "__main__":
     process_unanalyzed_articles()
