@@ -322,6 +322,43 @@ def api_graph_data():
     return jsonify(get_graph_data())
 
 
+@server.route("/api/source-status")
+def api_source_status():
+    """Return health status for every active news source."""
+    with get_db() as db:
+        cur = db.execute(
+            """
+            SELECT id, display_name, category, api_type, is_paid,
+                   is_working, last_tested_at, last_response_time_ms,
+                   rate_limit_rpm
+            FROM news_sources
+            WHERE is_active = 1
+            ORDER BY category, display_name
+            """
+        )
+        sources = [dict(r) for r in cur.fetchall()]
+
+    # Attach recent article count per source (last 24 h)
+    with get_db() as db:
+        counts = {
+            row[0]: row[1]
+            for row in db.execute(
+                """
+                SELECT source_id, COUNT(*) FROM news_articles
+                WHERE fetched_at >= datetime('now', '-24 hours')
+                GROUP BY source_id
+                """
+            ).fetchall()
+        }
+
+    for s in sources:
+        s["articles_last_24h"] = counts.get(s["id"], 0)
+        # Normalise is_working: NULL → "untested", 0 → "down", 1 → "up"
+        s["status"] = {None: "untested", 0: "down", 1: "up"}.get(s["is_working"], "untested")
+
+    return jsonify(sources)
+
+
 @server.route("/api/scheduler-status")
 def api_scheduler_status():
     return jsonify({
