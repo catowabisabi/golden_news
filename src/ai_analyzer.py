@@ -15,7 +15,18 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 
-MINIMAX_CHAT_KEY = os.environ.get("MINIMAX_CHAT_KEY", "")
+def _load_api_key() -> str:
+    key = os.environ.get("MINIMAX_CHAT_KEY", "")
+    if not key:
+        keys_path = PROJECT_ROOT / "config" / "api_keys.json"
+        if keys_path.exists():
+            try:
+                key = json.loads(keys_path.read_text()).get("minimax_chat", "")
+            except Exception:
+                pass
+    return key
+
+MINIMAX_CHAT_KEY = _load_api_key()
 BATCH_SIZE = 500
 MAX_WORKERS = 10  # concurrent API calls
 
@@ -59,11 +70,18 @@ def _make_client():
     )
 
 
+_SENTINEL_EMPTY = "EMPTY"    # article has no text — mark analyzed, no signal
+_SENTINEL_ERROR = "ERROR"    # API call failed — do NOT mark analyzed, retry next run
+
 def _analyze_one(article_id, title, summary, content):
-    """Analyze a single article. Returns (article_id, signal_or_None)."""
+    """Analyze a single article. Returns (article_id, result) where result is:
+      signal dict   — parsed signal from AI
+      _SENTINEL_EMPTY — no text to analyze
+      _SENTINEL_ERROR — API/network error, should retry later
+    """
     article_text = (summary or content or "").strip()
     if not article_text:
-        return article_id, None
+        return article_id, _SENTINEL_EMPTY
 
     client = _make_client()
     user_prompt = f"Title: {title}\n\nContent: {article_text[:2000]}"
@@ -83,17 +101,22 @@ def _analyze_one(article_id, title, summary, content):
             return article_id, signal
     except Exception as e:
         print(f"      [err] {title[:40]}: {e}")
-    return article_id, None
+        return article_id, _SENTINEL_ERROR
+    return article_id, _SENTINEL_EMPTY
 
 
 def _save_results(db, results, title_map):
     """Write all results to DB under a single lock."""
     saved = 0
+    errors = 0
     for article_id, signal in results:
         title = title_map.get(article_id, "")
-        if signal is None:
+        if signal is _SENTINEL_ERROR:
+            errors += 1
+            continue  # leave is_analyzed=0 so it gets retried next run
+
+        if signal is _SENTINEL_EMPTY:
             db.execute("UPDATE news_articles SET is_analyzed=1 WHERE id=?", (article_id,))
-            print(f"   ⏭  {title[:55]}")
             continue
 
         if signal.get("signal_type") == "none":
@@ -135,7 +158,7 @@ def _save_results(db, results, title_map):
         saved += 1
 
     db.commit()
-    return saved
+    return saved, errors
 
 
 def process_unanalyzed_articles():
@@ -180,9 +203,9 @@ def process_unanalyzed_articles():
             if done % 50 == 0:
                 print(f"   ... {done}/{len(articles)} done")
 
-    saved = _save_results(db, results, title_map)
+    saved, errors = _save_results(db, results, title_map)
     db.close()
-    print(f"\nDone — {saved} signals saved from {len(articles)} articles.")
+    print(f"\nDone — {saved} signals saved from {len(articles)} articles ({errors} API errors, will retry).")
     return saved
 
 
