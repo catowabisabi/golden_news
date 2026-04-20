@@ -87,6 +87,18 @@ def _build_env():
 
 import re as _re
 
+_DEDUP_STOP = {
+    'the','a','an','in','on','at','to','for','of','with','from','by','and',
+    'or','but','as','is','are','was','were','be','been','have','has','had',
+    'will','would','could','should','may','might','this','that','its','their',
+    'over','after','into','than','about','said','says','report','news','amid',
+}
+
+def _tok(title):
+    words = _re.findall(r'\b[a-z]{4,}\b', (title or '').lower())
+    return frozenset(w for w in words if w not in _DEDUP_STOP)
+
+
 def _classify(line: str) -> str:
     low = line.lower()
     if any(k in low for k in ("error", "err]", "exception", "traceback", "failed", "could not")):
@@ -133,15 +145,37 @@ def _stream_subprocess(label: str, cmd: list, env: dict, timeout: int | None = N
 
 
 def _flush_backlog():
-    """Mark unanalyzed articles as outdated so they are skipped and hidden."""
+    """Flush unanalyzed backlog and deduplicate existing analyzed articles."""
     with get_db() as db:
+        # 1. Flush all unanalyzed articles as outdated
         cur = db.execute(
             "UPDATE news_articles SET is_analyzed=1, is_outdated=1 WHERE is_analyzed=0"
         )
-        count = cur.rowcount
+        flushed = cur.rowcount
+
+        # 2. Deduplicate existing analyzed (non-signal) articles within 10 days
+        rows = db.execute(
+            "SELECT id, title FROM news_articles "
+            "WHERE is_outdated=0 AND is_trading_signal=0 "
+            "AND fetched_at >= datetime('now','-10 days') "
+            "ORDER BY fetched_at ASC"
+        ).fetchall()
+        seen, dup_ids = [], []
+        for art_id, title in rows:
+            tokens = _tok(title)
+            if tokens and any(len(tokens & s) >= 3 for s in seen if s):
+                dup_ids.append((art_id,))
+            else:
+                seen.append(tokens)
+        if dup_ids:
+            db.executemany("UPDATE news_articles SET is_outdated=1 WHERE id=?", dup_ids)
+
         db.commit()
-    if count:
-        _log("info", f"── Flushed {count} outdated articles (will not be shown) ──")
+
+    if flushed:
+        _log("info", f"── Flushed {flushed} outdated unanalyzed articles ──")
+    if dup_ids:
+        _log("info", f"── Deduplicated {len(dup_ids)} near-duplicate analyzed articles ──")
 
 
 def _run_pipeline():

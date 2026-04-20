@@ -4,6 +4,7 @@ Golden News - AI Analyzer
 Generates trading signals and alpha ideas from news using LLM
 Processes up to 500 articles per run using a thread pool for concurrency.
 """
+import re
 import sqlite3
 import json
 import os
@@ -180,11 +181,60 @@ def _save_results(db, results, title_map):
     return saved, errors
 
 
+_DEDUP_STOP = {
+    'the','a','an','in','on','at','to','for','of','with','from','by','and',
+    'or','but','as','is','are','was','were','be','been','have','has','had',
+    'will','would','could','should','may','might','this','that','its','their',
+    'over','after','into','than','about','said','says','report','news','amid',
+}
+
+def _tok(title):
+    words = re.findall(r'\b[a-z]{4,}\b', (title or '').lower())
+    return frozenset(w for w in words if w not in _DEDUP_STOP)
+
+
+def _deduplicate(db):
+    """Mark near-duplicate unanalyzed articles (same topic within 10 days) as outdated."""
+    # Build reference from already-analyzed non-outdated articles (last 10 days)
+    seen = [
+        _tok(r[0]) for r in db.execute(
+            "SELECT title FROM news_articles "
+            "WHERE is_analyzed=1 AND is_outdated=0 "
+            "AND fetched_at >= datetime('now','-10 days')"
+        ).fetchall()
+    ]
+
+    # Candidates: unanalyzed articles
+    candidates = db.execute(
+        "SELECT id, title FROM news_articles "
+        "WHERE is_analyzed=0 AND fetched_at >= datetime('now','-10 days') "
+        "ORDER BY fetched_at ASC"
+    ).fetchall()
+
+    dup_ids = []
+    for art_id, title in candidates:
+        tokens = _tok(title)
+        if tokens and any(len(tokens & s) >= 3 for s in seen if s):
+            dup_ids.append((art_id,))
+        else:
+            seen.append(tokens)
+
+    if dup_ids:
+        db.executemany(
+            "UPDATE news_articles SET is_analyzed=1, is_outdated=1 WHERE id=?",
+            dup_ids,
+        )
+        db.commit()
+        print(f"   Dedup: skipped {len(dup_ids)} near-duplicate articles")
+    return len(dup_ids)
+
+
 def process_unanalyzed_articles():
     print("Golden News AI Analyzer")
     print("=" * 50)
 
     db = sqlite3.connect(DB_PATH)
+    _deduplicate(db)  # remove near-duplicates before analysis
 
     # Sample up to 84 per source (~6 sources * 84 = ~500), diverse across asset classes
     cursor = db.execute("""
