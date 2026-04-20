@@ -9,6 +9,7 @@ import json
 import os
 import threading
 import anthropic
+import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -64,10 +65,12 @@ Rules:
 
 
 def _make_client():
+    # connect_timeout=10s: fail fast if server unreachable
+    # read_timeout=None: no limit once streaming starts — tokens arrive incrementally
     return anthropic.Anthropic(
         base_url="https://api.minimax.io/anthropic",
         api_key=MINIMAX_CHAT_KEY,
-        timeout=25.0,  # 25s per request; prevents workers from hanging indefinitely
+        timeout=httpx.Timeout(connect=10.0, read=None, write=10.0, pool=5.0),
     )
 
 
@@ -87,13 +90,16 @@ def _analyze_one(article_id, title, summary, content):
     client = _make_client()
     user_prompt = f"Title: {title}\n\nContent: {article_text[:2000]}"
     try:
-        response = client.messages.create(
+        # Streaming: connection established immediately, tokens arrive incrementally.
+        # No arbitrary read-timeout; only fails if the server stops sending data.
+        with client.messages.stream(
             model="MiniMax-M2.7",
             max_tokens=800,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
-        )
-        text = "".join(b.text for b in response.content if b.type == "text")
+        ) as stream:
+            text = stream.get_final_text()
+
         start = text.find("{")
         end = text.rfind("}") + 1
         if start != -1 and end > start:
