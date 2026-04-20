@@ -13,6 +13,7 @@ websockets>=10.0
 flask-socketio>=2.9.0
 
 # Dashboard
+flask>=3.0.0
 dash>=2.14.0
 plotly>=5.18.0
 numpy>=1.24.0
@@ -23,3 +24,6 @@ openai>=1.0.0
 
 # Utilities
 python-dateutil>=2.8.0
+
+# Dev / Testing
+pytest>=8.0.0
