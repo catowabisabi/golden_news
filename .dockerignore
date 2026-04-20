@@ -1,0 +1,12 @@
+.git
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.db-shm
+*.db-wal
+backups/
+logs/
+config/api_keys.json
+.env
