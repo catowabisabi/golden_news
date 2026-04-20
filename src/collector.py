@@ -135,7 +135,8 @@ def collect_rss(source, keys):
     elif "zerohedge" in name.lower():
         urls_to_try.append("https://www.zerohedge.com/feed")
     elif "investing" in name.lower():
-        urls_to_try.append(f"{base_url}/rss/news.rss")
+        # base_url already contains full RSS path for this source
+        urls_to_try.append(base_url)
     elif "yahoo" in name.lower():
         urls_to_try += [
             "https://finance.yahoo.com/news/rssindex",
@@ -146,7 +147,7 @@ def collect_rss(source, keys):
             "https://www.theguardian.com/business/rss",
             "https://www.theguardian.com/world/rss",
         ]
-    elif "duckduckgo" in name.lower():
+    elif "duckduckgo" in name.lower() or "websearch" in name.lower():
         # Rotate through extra free feeds for asset diversity
         for feed_url in _EXTRA_FEEDS:
             batch = _fetch_rss_url(feed_url)
@@ -164,26 +165,6 @@ def collect_rss(source, keys):
                 break
 
     return articles[:30]
-        try:
-            r = _get(url)
-            if r.status_code != 200:
-                continue
-
-            feed = feedparser.parse(r.text)
-            for entry in feed.entries[:15]:
-                articles.append({
-                    "title": entry.get("title", ""),
-                    "summary": entry.get("summary", "")[:500],
-                    "content": entry.get("content", [{}])[0].get("value", "")[:2000],
-                    "url": entry.get("link", ""),
-                    "author": entry.get("author", ""),
-                    "published_at": entry.get("published", datetime.now().isoformat()),
-                })
-            break  # Got articles, stop trying
-        except Exception:
-            continue
-
-    return articles[:10]
 
 def collect_rest(source, keys):
     """Collect from REST API"""
