@@ -145,7 +145,7 @@ def _stream_subprocess(label: str, cmd: list, env: dict, timeout: int | None = N
 
 
 def _flush_backlog():
-    """Flush unanalyzed backlog and deduplicate existing analyzed articles."""
+    """Flush unanalyzed backlog, deduplicate articles and signals."""
     with get_db() as db:
         # 1. Flush all unanalyzed articles as outdated
         cur = db.execute(
@@ -153,7 +153,7 @@ def _flush_backlog():
         )
         flushed = cur.rowcount
 
-        # 2. Deduplicate existing analyzed (non-signal) articles within 10 days
+        # 2. Deduplicate analyzed (non-signal) articles within 10 days
         rows = db.execute(
             "SELECT id, title FROM news_articles "
             "WHERE is_outdated=0 AND is_trading_signal=0 "
@@ -170,12 +170,34 @@ def _flush_backlog():
         if dup_ids:
             db.executemany("UPDATE news_articles SET is_outdated=1 WHERE id=?", dup_ids)
 
+        # 3. Deduplicate trading_signals by headline similarity — keep highest confidence
+        sig_rows = db.execute(
+            "SELECT ts.id, ts.headline, ts.confidence FROM trading_signals ts "
+            "JOIN news_articles a ON ts.article_id = a.id "
+            "WHERE ts.is_active=1 "
+            "AND a.fetched_at >= datetime('now','-10 days') "
+            "ORDER BY ts.confidence DESC"
+        ).fetchall()
+        sig_seen, sig_dup_ids = [], []
+        for sig_id, headline, conf in sig_rows:
+            tokens = _tok(headline)
+            if tokens and any(len(tokens & s) >= 3 for s in sig_seen if s):
+                sig_dup_ids.append((sig_id,))
+            else:
+                sig_seen.append(tokens)
+        if sig_dup_ids:
+            db.executemany(
+                "UPDATE trading_signals SET is_active=0 WHERE id=?", sig_dup_ids
+            )
+
         db.commit()
 
     if flushed:
         _log("info", f"── Flushed {flushed} outdated unanalyzed articles ──")
     if dup_ids:
-        _log("info", f"── Deduplicated {len(dup_ids)} near-duplicate analyzed articles ──")
+        _log("info", f"── Deduplicated {len(dup_ids)} near-duplicate articles ──")
+    if sig_dup_ids:
+        _log("info", f"── Deduplicated {len(sig_dup_ids)} near-duplicate signals ──")
 
 
 def _run_pipeline():
