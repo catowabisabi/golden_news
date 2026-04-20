@@ -825,6 +825,9 @@ setInterval(async () => {
       pillAn.style.display = 'none';
     }
 
+    // Refresh signals/articles in real-time during analysis
+    if (s.fetching && s.stage === 'analyzing') fetchAll();
+
     // Next fetch countdown source
     if (s.next_fetch) _nextFetchTs = new Date(s.next_fetch).getTime();
 

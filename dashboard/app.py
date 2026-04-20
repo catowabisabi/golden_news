@@ -46,7 +46,7 @@ _paused = False
 _current_analyzer_proc = None  # tracked so pause can kill it mid-run
 
 # ── Background scheduler ──────────────────────────────────────────────────────
-FETCH_INTERVAL_SEC = 15 * 60  # 15 minutes
+FETCH_INTERVAL_SEC = 60 * 60  # 60 minutes
 
 _sched = {
     "status":   "idle",   # idle | fetching | error

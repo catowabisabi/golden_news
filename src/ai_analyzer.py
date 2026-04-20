@@ -208,7 +208,8 @@ def process_unanalyzed_articles():
     print(f"   Analyzing {len(articles)} articles with {MAX_WORKERS} workers...\n")
     title_map = {row[0]: row[1] for row in articles}
 
-    results = []
+    total_saved = 0
+    total_errors = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
             pool.submit(_analyze_one, aid, title, summary, content): aid
@@ -217,15 +218,16 @@ def process_unanalyzed_articles():
         done = 0
         for future in as_completed(futures):
             article_id, signal = future.result()
-            results.append((article_id, signal))
+            saved, errors = _save_results(db, [(article_id, signal)], title_map)
+            total_saved += saved
+            total_errors += errors
             done += 1
             if done % 50 == 0:
                 print(f"   ... {done}/{len(articles)} done")
 
-    saved, errors = _save_results(db, results, title_map)
     db.close()
-    print(f"\nDone — {saved} signals saved from {len(articles)} articles ({errors} API errors, will retry).")
-    return saved
+    print(f"\nDone — {total_saved} signals saved from {len(articles)} articles ({total_errors} API errors, will retry).")
+    return total_saved
 
 
 if __name__ == "__main__":
