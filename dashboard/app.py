@@ -203,7 +203,7 @@ def get_db():
 
 
 def get_latest_articles(limit=100, source=None, asset=None, sort="newest"):
-    conditions = ["1=1"]
+    conditions = ["a.is_analyzed = 1"]
     params: list = []
     if source:
         conditions.append("s.display_name = ?")
