@@ -7,6 +7,7 @@ Processes up to 500 articles per run using a thread pool for concurrency.
 import sqlite3
 import json
 import os
+import time
 import threading
 import anthropic
 import httpx
@@ -29,7 +30,7 @@ def _load_api_key() -> str:
 
 MINIMAX_CHAT_KEY = _load_api_key()
 BATCH_SIZE = 500
-MAX_WORKERS = 10  # concurrent API calls
+MAX_WORKERS = 5   # 500 RPM shared across ~6 agents → ~83 RPM budget each
 
 _db_lock = threading.Lock()
 
@@ -89,27 +90,38 @@ def _analyze_one(article_id, title, summary, content):
 
     client = _make_client()
     user_prompt = f"Title: {title}\n\nContent: {article_text[:2000]}"
-    try:
-        # Streaming: connection established immediately, tokens arrive incrementally.
-        # No arbitrary read-timeout; only fails if the server stops sending data.
-        with client.messages.stream(
-            model="MiniMax-M2.7",
-            max_tokens=800,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
-        ) as stream:
-            text = stream.get_final_text()
 
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start != -1 and end > start:
-            signal = json.loads(text[start:end])
-            signal["ai_model"] = "minimax-m2.7"
-            return article_id, signal
-    except Exception as e:
-        print(f"      [err] {title[:40]}: {e}")
-        return article_id, _SENTINEL_ERROR
-    return article_id, _SENTINEL_EMPTY
+    for attempt in range(2):  # 1 retry after 15-min cooldown on 429
+        try:
+            with client.messages.stream(
+                model="MiniMax-M2.7",
+                max_tokens=800,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_prompt}],
+            ) as stream:
+                text = stream.get_final_text()
+
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start != -1 and end > start:
+                signal = json.loads(text[start:end])
+                signal["ai_model"] = "minimax-m2.7"
+                return article_id, signal
+            return article_id, _SENTINEL_EMPTY
+
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "rate_limit" in err_str.lower():
+                if attempt == 0:
+                    print(f"      [429] {title[:40]}: server overloaded, waiting 15 min...")
+                    time.sleep(15 * 60)
+                    continue
+                print(f"      [429] {title[:40]}: still overloaded after cooldown, skipping")
+                return article_id, _SENTINEL_ERROR
+            print(f"      [err] {title[:40]}: {e}")
+            return article_id, _SENTINEL_ERROR
+
+    return article_id, _SENTINEL_ERROR
 
 
 def _save_results(db, results, title_map):
