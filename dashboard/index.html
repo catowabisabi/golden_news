@@ -681,38 +681,45 @@ function setLive(ok) {
   dot.style.boxShadow   = ok ? '0 0 8px var(--green)' : '0 0 8px var(--red)';
 }
 
+function _stageLabel(s) {
+  if (!s.fetching) return null;
+  if (s.stage === 'collecting') return 'Collecting…';
+  if (s.stage === 'analyzing')  return s.progress ? `Analyzing ${s.progress}` : 'Analyzing…';
+  return 'Fetching…';
+}
+
+// Continuous status ticker — runs every 3s regardless of who triggered fetch
+setInterval(async () => {
+  try {
+    const r = await fetch(API_BASE + '/api/scheduler-status');
+    const s = await r.json();
+    const btn = document.getElementById('fetch-btn');
+    const ico = document.getElementById('fetch-icon');
+    const lbl = document.getElementById('fetch-label');
+    const upd = document.getElementById('last-update');
+
+    if (s.fetching) {
+      btn.disabled = true;
+      btn.classList.add('fetching');
+      ico.classList.add('spin');
+      lbl.textContent = _stageLabel(s);
+      upd.textContent = _stageLabel(s);
+    } else {
+      btn.disabled = false;
+      btn.classList.remove('fetching');
+      ico.classList.remove('spin');
+      ico.textContent = '⟳';
+      lbl.textContent = 'Fetch Now';
+      if (s.status === 'error') upd.style.color = 'var(--red)';
+      else upd.style.color = '';
+    }
+  } catch {}
+}, 3000);
+
 async function fetchNow() {
-  const btn = document.getElementById('fetch-btn');
-  const ico = document.getElementById('fetch-icon');
-  const lbl = document.getElementById('fetch-label');
-  btn.disabled = true;
-  btn.classList.add('fetching');
-  ico.classList.add('spin');
-  lbl.textContent = 'Fetching…';
   try {
     await fetch(API_BASE + '/api/fetch-now', { method: 'POST' });
-    const poll = setInterval(async () => {
-      try {
-        const r = await fetch(API_BASE + '/api/scheduler-status');
-        const s = await r.json();
-        if (!s.fetching) {
-          clearInterval(poll);
-          btn.disabled = false;
-          btn.classList.remove('fetching');
-          ico.classList.remove('spin');
-          ico.textContent = '⟳';
-          lbl.textContent = 'Fetch Now';
-          fetchAll();
-        }
-      } catch { clearInterval(poll); }
-    }, 3000);
-  } catch {
-    btn.disabled = false;
-    btn.classList.remove('fetching');
-    ico.classList.remove('spin');
-    ico.textContent = '⟳';
-    lbl.textContent = 'Fetch Now';
-  }
+  } catch {}
 }
 
 // ── Filter & Sort ─────────────────────────────────────────────────────────────

@@ -30,9 +30,11 @@ server = Flask(__name__, static_folder=None)
 FETCH_INTERVAL_SEC = 15 * 60  # 15 minutes
 
 _sched = {
-    "status": "idle",      # idle | fetching | error
-    "last_fetch": None,    # ISO-8601 UTC string
-    "next_fetch": None,    # ISO-8601 UTC string
+    "status":   "idle",   # idle | fetching | error
+    "stage":    "",       # "" | "collecting" | "analyzing"
+    "progress": "",       # e.g. "42/426"
+    "last_fetch": None,
+    "next_fetch": None,
     "fetching": False,
 }
 
@@ -64,21 +66,46 @@ def _build_env():
     return env
 
 
-def _capture(label: str, result: subprocess.CompletedProcess):
-    """Parse subprocess stdout/stderr into _pipeline_logs."""
-    combined = (result.stdout or "") + (result.stderr or "")
-    for raw in combined.splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-        low = line.lower()
-        if any(k in low for k in ("error", "err]", "exception", "traceback", "failed", "could not")):
-            level = "error"
-        elif any(k in low for k in ("warn", "warning")):
-            level = "warn"
-        else:
-            level = "info"
-        _log(level, f"[{label}] {line}")
+import re as _re
+
+def _classify(line: str) -> str:
+    low = line.lower()
+    if any(k in low for k in ("error", "err]", "exception", "traceback", "failed", "could not")):
+        return "error"
+    if any(k in low for k in ("warn", "warning")):
+        return "warn"
+    return "info"
+
+
+def _stream_subprocess(label: str, cmd: list, env: dict, timeout: int | None = None):
+    """Run cmd, stream stdout/stderr line-by-line into log buffer and update _sched progress."""
+    proc = subprocess.Popen(
+        cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
+    )
+
+    def _read():
+        for raw in proc.stdout:
+            line = raw.rstrip()
+            if not line:
+                continue
+            _log(_classify(line), f"[{label}] {line}")
+
+            # Parse progress from analyzer: "... 42/426 done"
+            m = _re.search(r"(\d+)/(\d+)\s+done", line)
+            if m:
+                _sched["progress"] = f"{m.group(1)}/{m.group(2)}"
+
+    reader = threading.Thread(target=_read, daemon=True)
+    reader.start()
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        _log("error", f"[{label}] killed after {timeout}s timeout")
+    reader.join(timeout=5)
+    if proc.returncode and proc.returncode != 0:
+        _log("error", f"[{label}] exited with code {proc.returncode}")
 
 
 def _run_pipeline():
@@ -90,33 +117,29 @@ def _run_pipeline():
     env = _build_env()
     _log("info", "── Pipeline started ──")
     try:
+        _sched["stage"] = "collecting"
+        _sched["progress"] = ""
         _log("info", "[collector] starting...")
-        r = subprocess.run(
+        _stream_subprocess("collector",
             [sys.executable, str(PROJECT_ROOT / "src" / "collector.py")],
-            timeout=300, env=env, capture_output=True, text=True,
-        )
-        _capture("collector", r)
-        if r.returncode != 0:
-            _log("error", f"[collector] exited with code {r.returncode}")
+            env, timeout=300)
 
+        _sched["stage"] = "analyzing"
+        _sched["progress"] = ""
         _log("info", "[analyzer] starting...")
-        r = subprocess.run(
+        _stream_subprocess("analyzer",
             [sys.executable, str(PROJECT_ROOT / "src" / "ai_analyzer.py")],
-            env=env, capture_output=True, text=True,
-        )
-        _capture("analyzer", r)
-        if r.returncode != 0:
-            _log("error", f"[analyzer] exited with code {r.returncode}")
+            env)  # no timeout for analyzer
 
         _sched["status"] = "idle"
+        _sched["stage"] = ""
+        _sched["progress"] = ""
         _sched["last_fetch"] = datetime.now(timezone.utc).isoformat()
         _log("info", "── Pipeline complete ──")
-    except subprocess.TimeoutExpired as e:
-        _log("error", f"Pipeline timeout: {e}")
-        _sched["status"] = "error"
     except Exception as e:
         _log("error", f"Pipeline error: {e}")
         _sched["status"] = "error"
+        _sched["stage"] = ""
     finally:
         _sched["fetching"] = False
     return True
@@ -369,7 +392,9 @@ def api_graph_data():
 @server.route("/api/scheduler-status")
 def api_scheduler_status():
     return jsonify({
-        "status": _sched["status"],
+        "status":   _sched["status"],
+        "stage":    _sched["stage"],
+        "progress": _sched["progress"],
         "last_fetch": _sched["last_fetch"],
         "next_fetch": _sched["next_fetch"],
         "fetching": _sched["fetching"],
