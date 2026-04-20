@@ -3,469 +3,818 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Golden News - Signal Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<title>Golden News — Signal Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 
 :root {
-  --bg:#0a0e17; --card:#141926; --card-hi:#1a2030;
-  --gold:#ffd700; --cyan:#00d4ff;
-  --green:#00ff88; --red:#ff4757; --amber:#ffb800;
-  --text:#e0e0e0; --muted:#6b7280; --line:rgba(255,255,255,0.06);
+  --bg:      #06090f;
+  --bg2:     #0b1020;
+  --card:    rgba(14,21,36,0.85);
+  --card-hi: rgba(20,30,50,0.92);
+  --border:  rgba(255,255,255,0.07);
+  --gold:    #ffd700;
+  --cyan:    #00d4ff;
+  --green:   #00ff88;
+  --red:     #ff4757;
+  --amber:   #ffb800;
+  --purple:  #a78bfa;
+  --text:    #e2e8f0;
+  --muted:   #64748b;
+  --line:    rgba(255,255,255,0.06);
 }
 
 body {
-  font-family:'Inter',-apple-system,sans-serif;
-  background:var(--bg); color:var(--text);
-  min-height:100vh; overflow-x:hidden;
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100vh; overflow-x: hidden;
 }
 
-/* Header */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 40% at 10% 10%, rgba(255,215,0,0.05) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 35% at 90% 85%, rgba(0,212,255,0.04) 0%, transparent 65%);
+}
+
+/* ── Header ── */
 .header {
-  display:flex; justify-content:space-between; align-items:center;
-  padding:16px 28px; background:var(--card);
-  border-bottom:1px solid rgba(255,215,0,0.12);
-  position:sticky; top:0; z-index:50;
+  position: sticky; top: 0; z-index: 60;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0 28px; height: 60px;
+  background: rgba(6,9,15,0.94);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(255,215,0,0.1);
 }
-.brand { display:flex; align-items:center; gap:12px; }
-.brand-logo { font-size:22px; font-weight:800; color:var(--gold); letter-spacing:-0.5px; }
-.brand-tag { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1.2px; }
-.status { display:flex; align-items:center; gap:18px; font-size:12px; }
-.live-dot { width:8px; height:8px; background:var(--green); border-radius:50%; animation:pulse 1.5s infinite; }
-@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
-.stat { color:var(--muted); }
-.stat b { color:var(--text); font-weight:600; }
-.stat .gold { color:var(--gold); }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+  background: linear-gradient(135deg, #ffd700 0%, #ff9500 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; font-weight: 900; color: #000;
+  box-shadow: 0 0 18px rgba(255,215,0,0.35);
+}
+.brand-text { line-height: 1.2; }
+.brand-logo { font-size: 15px; font-weight: 800; color: var(--gold); letter-spacing: -0.3px; }
+.brand-tag  { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.8px; }
 
-/* Layout */
-.main { padding:24px 28px 60px; max-width:1600px; margin:0 auto; }
+.header-right { display: flex; align-items: center; gap: 18px; }
+.status { display: flex; align-items: center; gap: 14px; }
+.live-indicator { display: flex; align-items: center; gap: 6px; }
+.live-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green); box-shadow: 0 0 8px var(--green);
+  animation: blink 2s infinite;
+}
+@keyframes blink {
+  0%,100% { opacity:1; box-shadow:0 0 8px var(--green); }
+  50%      { opacity:.4; box-shadow:0 0 3px var(--green); }
+}
+.live-label { font-size: 10px; font-weight: 700; color: var(--green); letter-spacing: 1.2px; }
+.stat-pill {
+  padding: 4px 11px; border-radius: 20px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  font-size: 11px; color: var(--muted);
+}
+.stat-pill b { color: var(--text); font-weight: 700; margin-right: 3px; }
+.stat-pill .gold-num { color: var(--gold); }
+#last-update { font-size: 10px; color: var(--muted); }
+
+.fetch-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 8px;
+  background: rgba(255,215,0,0.08); border: 1px solid rgba(255,215,0,0.28);
+  color: var(--gold); font: 600 11px 'Inter',sans-serif;
+  cursor: pointer; transition: all 0.2s; letter-spacing: 0.5px;
+  outline: none;
+}
+.fetch-btn:hover:not(:disabled) {
+  background: rgba(255,215,0,0.15); border-color: rgba(255,215,0,0.5);
+}
+.fetch-btn:disabled { opacity: .5; cursor: not-allowed; }
+.fetch-btn.fetching {
+  color: var(--cyan); border-color: rgba(0,212,255,0.35);
+  background: rgba(0,212,255,0.08);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { display: inline-block; animation: spin .9s linear infinite; }
+
+/* ── Toolbar ── */
+.toolbar {
+  position: sticky; top: 60px; z-index: 50;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 28px;
+  background: rgba(7,10,18,0.9);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+.toolbar::-webkit-scrollbar { height: 0; }
+
+.filter-select {
+  padding: 7px 28px 7px 10px; border-radius: 8px;
+  background: rgba(255,255,255,0.04) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2364748b'/%3E%3C/svg%3E") no-repeat right 9px center;
+  border: 1px solid var(--border); color: var(--text);
+  font: 12px 'Inter',sans-serif; cursor: pointer; outline: none;
+  min-width: 140px; -webkit-appearance: none; appearance: none;
+}
+.filter-select:focus { border-color: rgba(255,215,0,0.35); }
+
+.tb-divider { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+
+.chips { display: flex; gap: 5px; }
+.chip {
+  padding: 5px 13px; border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03); color: var(--muted);
+  font: 500 11px 'Inter',sans-serif; cursor: pointer;
+  white-space: nowrap; transition: all .18s; user-select: none;
+}
+.chip:hover { border-color: rgba(255,215,0,0.3); color: var(--text); }
+.chip.active {
+  background: rgba(255,215,0,0.1); border-color: rgba(255,215,0,0.42);
+  color: var(--gold); font-weight: 700;
+}
+
+.sort-group { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.sort-btn {
+  padding: 5px 12px; border-radius: 7px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--muted); font: 500 11px 'Inter',sans-serif;
+  cursor: pointer; white-space: nowrap; transition: all .18s;
+}
+.sort-btn:hover { color: var(--text); border-color: rgba(255,255,255,.15); }
+.sort-btn.active {
+  background: rgba(0,212,255,0.08); border-color: rgba(0,212,255,0.35);
+  color: var(--cyan); font-weight: 700;
+}
+
+/* ── Layout ── */
+.main { padding: 24px 28px 80px; max-width: 1600px; margin: 0 auto; position: relative; z-index: 1; }
+
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 32px 0 16px;
+}
+.section-header:first-child { margin-top: 8px; }
 .section-title {
-  display:flex; align-items:center; gap:10px;
-  font-size:13px; font-weight:600; color:var(--muted);
-  text-transform:uppercase; letter-spacing:1.5px;
-  margin:32px 0 14px;
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 1.8px;
 }
-.section-title:first-child { margin-top:8px; }
-.section-title .count {
-  background:rgba(255,215,0,0.12); color:var(--gold);
-  padding:2px 8px; border-radius:10px; font-size:10px;
-  letter-spacing:0.5px;
+.badge {
+  padding: 2px 8px; border-radius: 10px;
+  background: rgba(255,215,0,0.12); color: var(--gold);
+  font-size: 10px; letter-spacing: .4px; font-weight: 700;
 }
 
-/* Hero signals (top picks) */
+/* ── Hero Cards ── */
 .hero {
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
-  gap:14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
 }
+
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
 .hero-card {
-  background:linear-gradient(135deg,var(--card) 0%,var(--card-hi) 100%);
-  border:1px solid var(--line);
-  border-left:4px solid var(--muted);
-  border-radius:12px; padding:18px 20px;
-  cursor:pointer; transition:transform 0.15s,border-color 0.15s;
-  text-decoration:none; color:inherit; display:block;
-  position:relative; overflow:hidden;
+  position: relative; overflow: hidden;
+  background: var(--card);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--border); border-radius: 16px;
+  padding: 20px 20px 22px; cursor: pointer;
+  text-decoration: none; color: inherit; display: block;
+  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+  animation: fadeUp .4s ease both;
 }
-.hero-card:hover { transform:translateY(-2px); border-color:rgba(255,215,0,0.4); }
-.hero-card.long  { border-left-color:var(--green); }
-.hero-card.short { border-left-color:var(--red); }
-.hero-card.neutral { border-left-color:var(--muted); }
-.hero-card.stale { opacity:0.55; }
+.hero-card:nth-child(1) { animation-delay: .05s; }
+.hero-card:nth-child(2) { animation-delay: .10s; }
+.hero-card:nth-child(3) { animation-delay: .15s; }
+.hero-card:nth-child(4) { animation-delay: .20s; }
 
-.hero-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
-.hero-dir {
-  display:inline-flex; align-items:center; gap:6px;
-  font-size:11px; font-weight:800; letter-spacing:1px;
-  padding:4px 10px; border-radius:4px;
+/* Glass inner highlight */
+.hero-card::before {
+  content: ''; position: absolute; inset: 0; border-radius: 16px; pointer-events: none;
+  background: linear-gradient(140deg, rgba(255,255,255,0.025) 0%, transparent 55%);
 }
-.hero-dir.long { background:rgba(0,255,136,0.12); color:var(--green); }
-.hero-dir.short { background:rgba(255,71,87,0.12); color:var(--red); }
-.hero-dir.neutral { background:rgba(107,114,128,0.15); color:var(--muted); }
-.hero-asset {
-  font-size:10px; font-weight:700; color:var(--gold);
-  background:rgba(255,215,0,0.08); padding:3px 8px; border-radius:4px;
-  letter-spacing:0.8px; text-transform:uppercase;
+
+.hero-card.long {
+  border-color: rgba(0,255,136,0.28);
+  box-shadow: 0 4px 28px rgba(0,255,136,0.09), inset 0 1px 0 rgba(0,255,136,0.12);
 }
-.hero-conf {
-  font-size:18px; font-weight:700; color:var(--text);
+.hero-card.long:hover {
+  transform: translateY(-4px);
+  border-color: rgba(0,255,136,0.5);
+  box-shadow: 0 10px 40px rgba(0,255,136,0.15);
 }
-.hero-conf .pct { font-size:11px; color:var(--muted); margin-left:2px; }
-.hero-headline {
-  font-size:14px; line-height:1.45; color:var(--text);
-  font-weight:500; margin:8px 0 12px;
-  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
-  overflow:hidden;
+.hero-card.short {
+  border-color: rgba(255,71,87,0.28);
+  box-shadow: 0 4px 28px rgba(255,71,87,0.09), inset 0 1px 0 rgba(255,71,87,0.12);
 }
-.hero-meta {
-  display:flex; justify-content:space-between; align-items:center;
-  font-size:10px; color:var(--muted); padding-top:10px;
-  border-top:1px solid var(--line);
+.hero-card.short:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255,71,87,0.5);
+  box-shadow: 0 10px 40px rgba(255,71,87,0.15);
 }
-.hero-meta .horizon { color:var(--cyan); font-weight:600; text-transform:uppercase; letter-spacing:0.8px; }
+.hero-card.neutral:hover { transform: translateY(-4px); border-color: rgba(255,215,0,0.35); }
+.hero-card.stale { opacity: .48; }
+
+.card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.card-top-left { display: flex; flex-direction: column; gap: 8px; }
+
+.dir-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 11px; border-radius: 6px;
+  font-size: 10px; font-weight: 800; letter-spacing: 1.2px;
+}
+.dir-badge.long    { background: rgba(0,255,136,0.12); color: var(--green); }
+.dir-badge.short   { background: rgba(255,71,87,0.12);  color: var(--red); }
+.dir-badge.neutral { background: rgba(100,116,139,0.14); color: var(--muted); }
+
+.asset-pill {
+  display: inline-block; padding: 3px 9px; border-radius: 5px;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  background: rgba(255,215,0,0.08); color: var(--gold);
+  border: 1px solid rgba(255,215,0,0.2); cursor: pointer;
+  transition: background .15s;
+}
+.asset-pill:hover { background: rgba(255,215,0,0.16); }
+
+/* SVG Confidence Ring */
+.ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+.conf-ring { width: 56px; height: 56px; }
+.ring-label { font-size: 8.5px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
+
+.card-headline {
+  font-size: 14px; line-height: 1.52; color: var(--text); font-weight: 500;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; margin-bottom: 14px;
+}
+.card-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 12px; border-top: 1px solid var(--line);
+  font-size: 10px; color: var(--muted);
+}
+.card-horizon { color: var(--cyan); font-weight: 700; text-transform: uppercase; letter-spacing: .8px; }
+
 .score-bar {
-  position:absolute; bottom:0; left:0; height:2px;
-  background:linear-gradient(90deg,var(--gold),var(--cyan));
+  position: absolute; bottom: 0; left: 0; height: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--cyan));
+  border-radius: 0 0 0 16px; transition: width .6s ease;
 }
 
-/* Asset overview chart */
+/* ── Asset Chart ── */
 .chart-wrap {
-  background:var(--card); border:1px solid var(--line);
-  border-radius:12px; padding:20px;
+  background: var(--card); backdrop-filter: blur(16px);
+  border: 1px solid var(--border); border-radius: 16px; padding: 20px;
 }
-#asset-chart { width:100%; height:260px; }
-.chart-empty {
-  text-align:center; color:var(--muted); font-size:13px;
-  padding:60px 20px;
-}
+#asset-chart { width: 100%; height: 270px; }
 
-/* Signal list (compact) */
-.signal-list { display:flex; flex-direction:column; gap:6px; }
+/* ── Signal List ── */
+.signal-list { display: flex; flex-direction: column; gap: 5px; }
 .signal-row {
-  display:grid;
-  grid-template-columns:60px 80px 60px 1fr 110px 90px;
-  align-items:center; gap:14px;
-  background:var(--card); border:1px solid var(--line);
-  border-radius:8px; padding:12px 16px;
-  text-decoration:none; color:inherit;
-  transition:background 0.15s,border-color 0.15s;
+  display: grid;
+  grid-template-columns: 68px 95px 65px 1fr 130px 72px;
+  align-items: center; gap: 12px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 16px;
+  text-decoration: none; color: inherit;
+  transition: background .14s, border-color .14s, transform .14s;
 }
-.signal-row:hover { background:var(--card-hi); border-color:rgba(255,215,0,0.2); }
-.signal-row.stale { opacity:0.5; }
-.dir-tag { font-size:11px; font-weight:800; letter-spacing:0.8px; }
-.dir-tag.long { color:var(--green); }
-.dir-tag.short { color:var(--red); }
-.dir-tag.neutral { color:var(--muted); }
+.signal-row:hover {
+  background: var(--card-hi); border-color: rgba(255,215,0,0.22);
+  transform: translateX(3px);
+}
+.signal-row.stale { opacity: .42; }
+
+.dir-tag { font-size: 10px; font-weight: 800; letter-spacing: .8px; }
+.dir-tag.long    { color: var(--green); }
+.dir-tag.short   { color: var(--red); }
+.dir-tag.neutral { color: var(--muted); }
+
 .asset-tag {
-  font-size:10px; font-weight:700; color:var(--gold);
-  text-transform:uppercase; letter-spacing:0.8px;
-  cursor:pointer; user-select:none;
+  font-size: 10px; font-weight: 700; color: var(--gold);
+  text-transform: uppercase; letter-spacing: .8px;
+  cursor: pointer; transition: color .14s; user-select: none;
 }
-.asset-tag:hover { text-decoration:underline; }
-.asset-tag.boosted::after { content:' ★'; color:var(--cyan); }
-.conf-cell {
-  font-size:13px; font-weight:600; color:var(--text); text-align:right;
-}
-.conf-bar {
-  width:100%; height:3px; background:rgba(255,255,255,0.05);
-  border-radius:2px; margin-top:3px; overflow:hidden;
-}
-.conf-bar > div { height:100%; background:var(--gold); }
+.asset-tag:hover { color: #ffe438; text-decoration: underline; }
+.asset-tag.boosted::after { content: ' ★'; color: var(--cyan); font-size: 9px; }
+
+.conf-mini { text-align: right; }
+.conf-num  { font-size: 13px; font-weight: 700; color: var(--text); }
+.conf-bar  { width: 100%; height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.conf-bar > div { height: 100%; border-radius: 2px; transition: width .4s ease; }
+
 .headline-cell {
-  font-size:13px; line-height:1.4; color:var(--text);
-  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  font-size: 12px; line-height: 1.45; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.source-cell { font-size:10px; color:var(--muted); text-align:right; }
-.horizon-cell {
-  font-size:9px; color:var(--cyan); font-weight:600;
-  text-transform:uppercase; letter-spacing:0.6px;
+.source-meta { font-size: 9px; color: var(--muted); text-align: right; line-height: 1.5; }
+.horizon-tag {
+  font-size: 9px; color: var(--cyan); font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px;
 }
-.age-cell { font-size:11px; color:var(--muted); text-align:right; }
+.age-num { font-size: 11px; color: var(--muted); text-align: right; }
 
-/* News strip (collapsed) */
+/* ── News Section ── */
 .news-toggle {
-  display:flex; align-items:center; gap:10px;
-  background:transparent; border:none; cursor:pointer;
-  font:inherit; color:inherit; padding:0;
+  display: inline-flex; align-items: center; gap: 10px;
+  background: transparent; border: none; cursor: pointer;
+  font: inherit; color: inherit; padding: 0;
 }
-.news-toggle:hover .section-title { color:var(--text); }
-.chev { color:var(--muted); transition:transform 0.2s; }
-.chev.open { transform:rotate(90deg); }
+.news-toggle:hover .section-title { color: var(--text); }
+.chev { color: var(--muted); transition: transform .2s; font-size: 11px; }
+.chev.open { transform: rotate(90deg); }
 
-.news-list { display:none; flex-direction:column; gap:1px; }
-.news-list.open { display:flex; }
+.news-list { display: none; flex-direction: column; margin-top: 8px; gap: 2px; }
+.news-list.open { display: flex; }
 .news-row {
-  display:flex; justify-content:space-between; align-items:center;
-  padding:10px 16px; background:var(--card);
-  border-bottom:1px solid var(--line);
-  text-decoration:none; color:inherit; gap:14px;
-  font-size:12px;
+  display: flex; align-items: center; gap: 14px;
+  padding: 11px 16px; background: var(--card);
+  border-bottom: 1px solid var(--line);
+  text-decoration: none; color: inherit; font-size: 12px;
+  transition: background .12s;
 }
-.news-row:first-child { border-radius:8px 8px 0 0; }
-.news-row:last-child { border-radius:0 0 8px 8px; border-bottom:none; }
-.news-row:hover { background:var(--card-hi); }
-.news-title {
-  flex:1; color:var(--text);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
-.news-meta { display:flex; gap:14px; flex-shrink:0; font-size:10px; color:var(--muted); }
-.news-meta .src { color:var(--gold); }
-.news-meta .pos { color:var(--green); }
-.news-meta .neg { color:var(--red); }
-.news-meta .neu { color:var(--muted); }
+.news-row:first-child { border-radius: 12px 12px 0 0; }
+.news-row:last-child  { border-radius: 0 0 12px 12px; border-bottom: none; }
+.news-row:only-child  { border-radius: 12px; }
+.news-row:hover { background: var(--card-hi); }
+.news-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.news-src { font-size: 10px; color: var(--gold); font-weight: 600; flex-shrink: 0; min-width: 90px; text-align: right; }
+.news-sent { font-size: 10px; flex-shrink: 0; }
+.news-sent.pos { color: var(--green); }
+.news-sent.neg { color: var(--red); }
+.news-sent.neu { color: var(--muted); }
+.news-age { font-size: 10px; color: var(--muted); flex-shrink: 0; min-width: 52px; text-align: right; }
 
+/* ── Empty State ── */
 .empty {
-  text-align:center; color:var(--muted); padding:40px 20px;
-  background:var(--card); border:1px dashed var(--line); border-radius:12px;
+  text-align: center; color: var(--muted); padding: 52px 20px;
+  background: var(--card); border: 1px dashed rgba(255,255,255,0.08);
+  border-radius: 16px;
 }
-.empty .ico { font-size:32px; opacity:0.4; margin-bottom:8px; }
+.empty-ico { font-size: 38px; opacity: .3; margin-bottom: 10px; }
+.empty-action {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin-top: 16px; padding: 9px 20px; border-radius: 9px;
+  background: rgba(255,215,0,0.08); border: 1px solid rgba(255,215,0,0.28);
+  color: var(--gold); font: 600 12px 'Inter',sans-serif; cursor: pointer;
+  transition: all .2s;
+}
+.empty-action:hover { background: rgba(255,215,0,0.15); }
 
-::-webkit-scrollbar { width:8px; height:8px; }
-::-webkit-scrollbar-track { background:var(--bg); }
-::-webkit-scrollbar-thumb { background:rgba(255,215,0,0.3); border-radius:4px; }
-::-webkit-scrollbar-thumb:hover { background:var(--gold); }
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: rgba(255,215,0,0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,215,0,0.4); }
 
-@media (max-width:880px) {
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .header  { padding: 0 16px; }
+  .toolbar { padding: 10px 16px; }
+  .main    { padding: 16px 16px 60px; }
+  .header-right .stat-pill:last-of-type { display: none; }
   .signal-row {
-    grid-template-columns:60px 70px 1fr;
+    grid-template-columns: 60px 80px 1fr;
     grid-template-areas:
-      'dir asset conf'
-      'head head head'
-      'src src horizon';
-    gap:8px;
+      'dir  asset conf'
+      'head head  head'
+      'src  src   age';
   }
-  .source-cell, .horizon-cell, .age-cell, .headline-cell { text-align:left; }
+  .headline-cell { grid-area: head; }
+  .source-meta   { grid-area: src; text-align: left; }
+  .age-num       { grid-area: age; }
+  .horizon-tag   { display: none; }
+}
+@media (max-width: 600px) {
+  .brand-mark { display: none; }
+  .chips .chip:nth-child(n+6) { display: none; }
+  #last-update { display: none; }
 }
 </style>
 </head>
 <body>
 
+<!-- Header -->
 <header class="header">
   <div class="brand">
-    <div class="brand-logo">🏆 Golden News</div>
-    <div class="brand-tag">Signal Intelligence</div>
+    <div class="brand-mark">G</div>
+    <div class="brand-text">
+      <div class="brand-logo">Golden News</div>
+      <div class="brand-tag">Signal Intelligence</div>
+    </div>
   </div>
-  <div class="status">
-    <div style="display:flex;align-items:center;gap:8px"><span class="live-dot"></span><span style="color:var(--green);font-weight:600">LIVE</span></div>
-    <span class="stat"><b id="stat-signals">0</b> signals</span>
-    <span class="stat"><b class="gold" id="stat-strong">0</b> strong</span>
-    <span class="stat" id="last-update">—</span>
+  <div class="header-right">
+    <div class="status">
+      <div class="live-indicator">
+        <span class="live-dot" id="live-dot"></span>
+        <span class="live-label">LIVE</span>
+      </div>
+      <span class="stat-pill"><b id="stat-signals">0</b> signals</span>
+      <span class="stat-pill"><b class="gold-num" id="stat-strong">0</b> strong</span>
+      <span id="last-update">—</span>
+    </div>
+    <button class="fetch-btn" id="fetch-btn" onclick="fetchNow()">
+      <span id="fetch-icon">⟳</span>
+      <span id="fetch-label">Fetch Now</span>
+    </button>
   </div>
 </header>
 
+<!-- Filter / Sort Toolbar -->
+<div class="toolbar">
+  <select class="filter-select" id="source-filter" onchange="onSourceChange()">
+    <option value="">All Sources</option>
+  </select>
+
+  <div class="tb-divider"></div>
+
+  <div class="chips" id="asset-chips">
+    <button class="chip active" data-asset="" onclick="setAsset(this)">ALL</button>
+    <button class="chip" data-asset="gold"        onclick="setAsset(this)">🥇 Gold</button>
+    <button class="chip" data-asset="oil"         onclick="setAsset(this)">🛢 Oil</button>
+    <button class="chip" data-asset="stocks"      onclick="setAsset(this)">📈 Stocks</button>
+    <button class="chip" data-asset="crypto"      onclick="setAsset(this)">₿ Crypto</button>
+    <button class="chip" data-asset="bonds"       onclick="setAsset(this)">🏦 Bonds</button>
+    <button class="chip" data-asset="forex"       onclick="setAsset(this)">💱 Forex</button>
+    <button class="chip" data-asset="commodities" onclick="setAsset(this)">🌾 Comm.</button>
+  </div>
+
+  <div class="tb-divider"></div>
+
+  <div class="sort-group">
+    <button class="sort-btn active" data-sort="hot"        onclick="setSort(this)">🔥 Hot</button>
+    <button class="sort-btn"        data-sort="newest"     onclick="setSort(this)">🕒 Newest</button>
+    <button class="sort-btn"        data-sort="confidence" onclick="setSort(this)">🎯 Confidence</button>
+  </div>
+</div>
+
+<!-- Main -->
 <main class="main">
 
-  <div class="section-title">🎯 Top Picks <span class="count" id="hero-count">0</span></div>
+  <div class="section-header">
+    <div class="section-title">🎯 Top Picks <span class="badge" id="hero-count">0</span></div>
+  </div>
   <div class="hero" id="hero">
-    <div class="empty"><div class="ico">⚡</div>No signals yet.<br><span style="font-size:11px">Run the AI analyzer to generate signals.</span></div>
+    <div class="empty">
+      <div class="empty-ico">⚡</div>
+      No signals yet.<br>
+      <small style="font-size:11px;opacity:.65">Run the AI analyzer or click Fetch Now.</small><br>
+      <button class="empty-action" onclick="fetchNow()">⟳ Fetch Now</button>
+    </div>
   </div>
 
-  <div class="section-title">📊 Asset Overview</div>
+  <div class="section-header">
+    <div class="section-title">📊 Asset Overview</div>
+  </div>
   <div class="chart-wrap">
     <div id="asset-chart"></div>
-    <div id="asset-empty" class="chart-empty" style="display:none">No active signals to plot.</div>
+    <div id="asset-empty" style="display:none;text-align:center;color:var(--muted);font-size:13px;padding:60px 20px">
+      No active signals to chart.
+    </div>
   </div>
 
-  <div class="section-title">📋 All Signals <span class="count" id="all-count">0</span></div>
+  <div class="section-header">
+    <div class="section-title">📋 All Signals <span class="badge" id="all-count">0</span></div>
+  </div>
   <div class="signal-list" id="signal-list"></div>
 
-  <button class="news-toggle" onclick="toggleNews()" style="margin-top:32px">
-    <span class="chev" id="news-chev">▶</span>
-    <span class="section-title" style="margin:0">📰 Latest News <span class="count" id="news-count">0</span></span>
-  </button>
+  <div style="margin-top:36px">
+    <button class="news-toggle" onclick="toggleNews()">
+      <span class="chev" id="news-chev">▶</span>
+      <span class="section-title" style="margin:0">📰 Latest News <span class="badge" id="news-count">0</span></span>
+    </button>
+  </div>
   <div class="news-list" id="news-list"></div>
 
 </main>
 
 <script>
-const API_BASE = location.protocol === 'file:' ? 'http://localhost:8050' : '';
+const API_BASE  = location.protocol === 'file:' ? 'http://localhost:8050' : '';
 const REFRESH_MS = 30000;
 
-// Half-life in minutes (controls freshness decay)
+// Freshness decay half-lives & stale thresholds (minutes)
 const HALF_LIFE = { 'intraday': 60, 'short-term': 360, 'medium-term': 1440 };
-// Stale threshold in minutes (signals dimmed beyond this)
 const STALE_AT  = { 'intraday': 240, 'short-term': 1440, 'medium-term': 4320 };
 
-// User interest: { asset_class: clickCount } — persisted in localStorage
+// User interest (localStorage)
 const INTEREST_KEY = 'gn:interest:v1';
-let interest = loadInterest();
-
-function loadInterest() {
+let interest = (() => {
   try { return JSON.parse(localStorage.getItem(INTEREST_KEY)) || {}; }
   catch { return {}; }
-}
-function saveInterest() {
-  localStorage.setItem(INTEREST_KEY, JSON.stringify(interest));
-}
+})();
+function saveInterest() { localStorage.setItem(INTEREST_KEY, JSON.stringify(interest)); }
 function boostAsset(asset) {
   if (!asset) return;
   interest[asset] = (interest[asset] || 0) + 1;
   saveInterest();
-  render();  // re-rank instantly
+  render();
 }
 
+// ── Filter / sort state ───────────────────────────────────────────────────────
+let activeAsset  = '';
+let activeSource = '';
+let activeSort   = 'hot';
+
+function setAsset(btn) {
+  document.querySelectorAll('#asset-chips .chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  activeAsset = btn.dataset.asset;
+  render();
+}
+function setSort(btn) {
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeSort = btn.dataset.sort;
+  render();
+}
+function onSourceChange() {
+  activeSource = document.getElementById('source-filter').value;
+  render();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function ageMinutes(iso) {
   if (!iso) return 9999;
   const t = Date.parse(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z');
-  if (isNaN(t)) return 9999;
-  return Math.max(0, (Date.now() - t) / 60000);
+  return isNaN(t) ? 9999 : Math.max(0, (Date.now() - t) / 60000);
 }
-
-function freshnessDecay(ageMin, horizon) {
-  const hl = HALF_LIFE[horizon] || 360;
-  return Math.exp(-0.693 * ageMin / hl);
+function freshnessDecay(age, horizon) {
+  return Math.exp(-0.693 * age / (HALF_LIFE[horizon] || 360));
 }
-
-function isStale(ageMin, horizon) {
-  return ageMin > (STALE_AT[horizon] || 1440);
-}
-
+function isStale(age, horizon) { return age > (STALE_AT[horizon] || 1440); }
 function interestBoost(asset) {
-  const totalClicks = Object.values(interest).reduce((a, b) => a + b, 0);
-  if (!totalClicks) return 0;
-  return 0.5 * ((interest[asset] || 0) / totalClicks);
+  const total = Object.values(interest).reduce((a, b) => a + b, 0);
+  return total ? 0.5 * ((interest[asset] || 0) / total) : 0;
 }
-
 function score(sig) {
   const age = ageMinutes(sig.generated_at || sig.article_published_at);
-  const fresh = freshnessDecay(age, sig.time_horizon);
-  const conf  = sig.confidence || 0.5;
-  const boost = interestBoost(sig.asset_class);
-  return fresh * conf * (1 + boost);
+  return freshnessDecay(age, sig.time_horizon) * (sig.confidence || 0.5) * (1 + interestBoost(sig.asset_class));
 }
-
 function formatAge(min) {
-  if (min < 1) return 'now';
-  if (min < 60) return Math.round(min) + 'm ago';
+  if (min < 1)    return 'now';
+  if (min < 60)   return Math.round(min) + 'm';
   if (min < 1440) return Math.round(min / 60) + 'h ago';
   return Math.round(min / 1440) + 'd ago';
 }
+function dc(d) { return (d || 'neutral').toLowerCase(); }
+function esc(s) {
+  return String(s || '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
-function dirClass(d) { return (d || 'neutral').toLowerCase(); }
+// SVG confidence ring
+function confRing(pct, dir) {
+  const color  = dir === 'long' ? '#00ff88' : dir === 'short' ? '#ff4757' : '#ffd700';
+  const r = 15.9, circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ, gap = circ - dash;
+  const offset = (circ * 0.25).toFixed(1);
+  return `<svg class="conf-ring" viewBox="0 0 36 36">
+    <circle cx="18" cy="18" r="${r}" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="3"/>
+    <circle cx="18" cy="18" r="${r}" fill="none" stroke="${color}" stroke-width="3"
+      stroke-dasharray="${dash.toFixed(1)} ${gap.toFixed(1)}"
+      stroke-dashoffset="${offset}" stroke-linecap="round"/>
+    <text x="18" y="18" text-anchor="middle" dominant-baseline="middle"
+      fill="#e2e8f0" font-size="7.5" font-weight="700" font-family="Inter,sans-serif">${pct}%</text>
+  </svg>`;
+}
 
-let lastSignals = [];
+function barColor(dir) {
+  return dir === 'long' ? '#00ff88' : dir === 'short' ? '#ff4757' : '#ffd700';
+}
+
+// ── Data ─────────────────────────────────────────────────────────────────────
+let lastSignals  = [];
 let lastArticles = [];
 let chart = null;
 
 async function fetchAll() {
   try {
-    const [sigRes, artRes] = await Promise.all([
+    const [sRes, aRes] = await Promise.all([
       fetch(API_BASE + '/api/signals'),
-      fetch(API_BASE + '/api/articles')
+      fetch(API_BASE + '/api/articles'),
     ]);
-    if (!sigRes.ok || !artRes.ok) throw new Error('API error');
-    lastSignals = await sigRes.json();
-    lastArticles = await artRes.json();
+    if (!sRes.ok || !aRes.ok) throw new Error('API error');
+    lastSignals  = await sRes.json();
+    lastArticles = await aRes.json();
     document.getElementById('last-update').textContent =
-      'Updated ' + new Date().toLocaleTimeString();
+      'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setLive(true);
     render();
-  } catch (e) {
-    document.getElementById('last-update').textContent = 'Connection lost — retrying';
+  } catch {
+    setLive(false);
+    document.getElementById('last-update').textContent = 'Connection lost';
   }
 }
 
-function render() {
-  // Sort by score (interest-weighted, freshness-decayed)
-  const ranked = lastSignals
-    .map(s => ({ ...s, _score: score(s), _age: ageMinutes(s.generated_at || s.article_published_at) }))
-    .sort((a, b) => b._score - a._score);
+async function loadSources() {
+  try {
+    const r = await fetch(API_BASE + '/api/sources');
+    if (!r.ok) return;
+    const sources = await r.json();
+    const sel = document.getElementById('source-filter');
+    sel.innerHTML = '<option value="">All Sources</option>' +
+      sources.map(s => `<option value="${esc(s.display_name)}">${esc(s.display_name)}</option>`).join('');
+  } catch {}
+}
 
+function setLive(ok) {
+  const dot = document.getElementById('live-dot');
+  dot.style.background  = ok ? 'var(--green)' : 'var(--red)';
+  dot.style.boxShadow   = ok ? '0 0 8px var(--green)' : '0 0 8px var(--red)';
+}
+
+async function fetchNow() {
+  const btn = document.getElementById('fetch-btn');
+  const ico = document.getElementById('fetch-icon');
+  const lbl = document.getElementById('fetch-label');
+  btn.disabled = true;
+  btn.classList.add('fetching');
+  ico.classList.add('spin');
+  lbl.textContent = 'Fetching…';
+  try {
+    await fetch(API_BASE + '/api/fetch-now', { method: 'POST' });
+    const poll = setInterval(async () => {
+      try {
+        const r = await fetch(API_BASE + '/api/scheduler-status');
+        const s = await r.json();
+        if (!s.fetching) {
+          clearInterval(poll);
+          btn.disabled = false;
+          btn.classList.remove('fetching');
+          ico.classList.remove('spin');
+          ico.textContent = '⟳';
+          lbl.textContent = 'Fetch Now';
+          fetchAll();
+        }
+      } catch { clearInterval(poll); }
+    }, 3000);
+  } catch {
+    btn.disabled = false;
+    btn.classList.remove('fetching');
+    ico.classList.remove('spin');
+    ico.textContent = '⟳';
+    lbl.textContent = 'Fetch Now';
+  }
+}
+
+// ── Filter & Sort ─────────────────────────────────────────────────────────────
+function applyFilters(sigs) {
+  let out = sigs.map(s => ({
+    ...s,
+    _age:   ageMinutes(s.generated_at || s.article_published_at),
+    _score: score(s),
+  }));
+
+  if (activeAsset)  out = out.filter(s => (s.asset_class || '').toLowerCase() === activeAsset.toLowerCase());
+  if (activeSource) out = out.filter(s => s.source_name === activeSource);
+
+  if (activeSort === 'hot')        out.sort((a, b) => b._score - a._score);
+  else if (activeSort === 'newest') out.sort((a, b) => a._age  - b._age);
+  else if (activeSort === 'confidence') out.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+
+  return out;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  const ranked = applyFilters(lastSignals);
   document.getElementById('stat-signals').textContent = ranked.length;
   document.getElementById('stat-strong').textContent =
-    ranked.filter(s => s.confidence >= 0.7 && !isStale(s._age, s.time_horizon)).length;
+    ranked.filter(s => (s.confidence || 0) >= 0.7 && !isStale(s._age, s.time_horizon)).length;
 
   renderHero(ranked.slice(0, 4));
   renderAssetChart(ranked.filter(s => !isStale(s._age, s.time_horizon)));
   renderSignalList(ranked);
-  renderNews(lastArticles);
+
+  let news = lastArticles;
+  if (activeSource) news = news.filter(a => a.source_name === activeSource);
+  if (activeAsset)  news = news.filter(a => (a.category || '').toLowerCase() === activeAsset.toLowerCase());
+  renderNews(news);
 }
 
 function renderHero(top) {
   const hero = document.getElementById('hero');
   document.getElementById('hero-count').textContent = top.length;
   if (!top.length) {
-    hero.innerHTML = '<div class="empty"><div class="ico">⚡</div>No signals yet.<br><span style="font-size:11px">Run the AI analyzer to generate signals.</span></div>';
+    hero.innerHTML = `<div class="empty">
+      <div class="empty-ico">⚡</div>
+      No signals yet.<br>
+      <small style="font-size:11px;opacity:.65">Run the AI analyzer or click Fetch Now.</small><br>
+      <button class="empty-action" onclick="fetchNow()">⟳ Fetch Now</button>
+    </div>`;
     return;
   }
   const maxScore = top[0]._score || 1;
   hero.innerHTML = top.map(s => {
-    const dir = dirClass(s.direction);
+    const dir   = dc(s.direction);
     const stale = isStale(s._age, s.time_horizon);
-    const conf = Math.round((s.confidence || 0) * 100);
-    const url = s.article_url || '#';
-    const widthPct = Math.max(8, Math.round((s._score / maxScore) * 100));
+    const conf  = Math.round((s.confidence || 0) * 100);
+    const url   = esc(s.article_url || '#');
+    const w     = Math.max(6, Math.round((s._score / maxScore) * 100));
+    const arrow = dir === 'long' ? '▲' : dir === 'short' ? '▼' : '●';
     return `
       <a class="hero-card ${dir}${stale ? ' stale' : ''}" href="${url}" target="_blank" rel="noopener">
-        <div class="hero-row">
-          <span class="hero-dir ${dir}">${(s.direction || 'NEUTRAL').toUpperCase()}</span>
-          <span class="hero-asset" data-asset="${s.asset_class || ''}" onclick="event.preventDefault();event.stopPropagation();boostAsset('${s.asset_class || ''}')">${s.asset_class || 'multi'}</span>
+        <div class="card-top">
+          <div class="card-top-left">
+            <span class="dir-badge ${dir}">${arrow} ${(s.direction || 'NEUTRAL').toUpperCase()}</span>
+            <span class="asset-pill"
+              onclick="event.preventDefault();event.stopPropagation();boostAsset('${esc(s.asset_class||'')}')">
+              ${esc(s.asset_class || 'multi')}
+            </span>
+          </div>
+          <div class="ring-wrap">
+            ${confRing(conf, dir)}
+            <span class="ring-label">confidence</span>
+          </div>
         </div>
-        <div class="hero-headline">${escapeHtml(s.headline || s.article_title || '—')}</div>
-        <div class="hero-meta">
-          <span class="horizon">${s.time_horizon || '—'}</span>
-          <span>${formatAge(s._age)} • <b style="color:var(--text)">${conf}%</b></span>
+        <div class="card-headline">${esc(s.headline || s.article_title || '—')}</div>
+        <div class="card-footer">
+          <span class="card-horizon">${s.time_horizon || '—'}</span>
+          <span>${esc((s.source_name || '').slice(0, 18))}</span>
+          <span>${formatAge(s._age)}</span>
         </div>
-        <div class="score-bar" style="width:${widthPct}%"></div>
+        <div class="score-bar" style="width:${w}%"></div>
       </a>`;
   }).join('');
 }
 
 function renderAssetChart(signals) {
-  const wrap = document.getElementById('asset-chart');
+  const wrap  = document.getElementById('asset-chart');
   const empty = document.getElementById('asset-empty');
   if (!signals.length) {
-    wrap.style.display = 'none';
+    wrap.style.display  = 'none';
     empty.style.display = 'block';
     return;
   }
-  wrap.style.display = 'block';
+  wrap.style.display  = 'block';
   empty.style.display = 'none';
 
-  // Aggregate confidence per asset class, signed by direction
   const agg = {};
   signals.forEach(s => {
     const a = s.asset_class || 'multi';
     if (!agg[a]) agg[a] = { long: 0, short: 0, count: 0 };
     if (s.direction === 'long')  agg[a].long  += s.confidence || 0;
     if (s.direction === 'short') agg[a].short += s.confidence || 0;
-    agg[a].count += 1;
+    agg[a].count++;
   });
 
-  const assets = Object.keys(agg).sort((a, b) => (agg[b].long + agg[b].short) - (agg[a].long + agg[a].short));
-  const longs  = assets.map(a =>  agg[a].long.toFixed(2));
-  const shorts = assets.map(a => -agg[a].short.toFixed(2));
+  const assets = Object.keys(agg).sort(
+    (a, b) => (agg[b].long + agg[b].short) - (agg[a].long + agg[a].short)
+  );
+  const longs  = assets.map(a =>  +agg[a].long.toFixed(2));
+  const shorts = assets.map(a => -+agg[a].short.toFixed(2));
 
   if (!chart) chart = echarts.init(wrap, null, { renderer: 'canvas' });
   chart.setOption({
     backgroundColor: 'transparent',
     grid: { top: 30, right: 30, bottom: 30, left: 90 },
     tooltip: {
-      trigger: 'axis',
-      backgroundColor: '#1a2030',
-      borderColor: 'rgba(255,215,0,0.3)',
-      textStyle: { color: '#e0e0e0', fontFamily: 'Inter' },
+      trigger: 'axis', backgroundColor: '#0e1524',
+      borderColor: 'rgba(255,215,0,0.18)',
+      textStyle: { color: '#e2e8f0', fontFamily: 'Inter,sans-serif', fontSize: 12 },
       axisPointer: { type: 'shadow' },
-      formatter: function (params) {
-        const asset = params[0].axisValue;
-        const long = params.find(p => p.seriesName === 'LONG');
-        const short = params.find(p => p.seriesName === 'SHORT');
-        return `<b style="color:#ffd700">${asset.toUpperCase()}</b><br>` +
-               `<span style="color:#00ff88">▲ LONG ${long ? long.value : 0}</span><br>` +
-               `<span style="color:#ff4757">▼ SHORT ${short ? Math.abs(short.value) : 0}</span><br>` +
-               `<span style="color:#888;font-size:10px">${agg[asset].count} signal(s)</span>`;
-      }
+      formatter: params => {
+        const a  = params[0].axisValue;
+        const lo = params.find(p => p.seriesName === 'LONG');
+        const sh = params.find(p => p.seriesName === 'SHORT');
+        return `<b style="color:#ffd700">${a.toUpperCase()}</b><br>
+          <span style="color:#00ff88">▲ LONG ${lo ? lo.value : 0}</span><br>
+          <span style="color:#ff4757">▼ SHORT ${sh ? Math.abs(sh.value) : 0}</span><br>
+          <span style="color:#64748b;font-size:10px">${agg[a].count} signal(s)</span>`;
+      },
     },
     legend: {
-      data: ['LONG', 'SHORT'], textStyle: { color: '#888', fontFamily: 'Inter', fontSize: 11 },
-      right: 20, top: 4, itemHeight: 8, itemWidth: 14
+      data: ['LONG', 'SHORT'], right: 16, top: 4,
+      textStyle: { color: '#64748b', fontFamily: 'Inter,sans-serif', fontSize: 11 },
+      itemHeight: 8, itemWidth: 14,
     },
     xAxis: {
       type: 'value',
-      axisLine: { lineStyle: { color: '#2a2f3e' } },
-      axisLabel: { color: '#6b7280', fontFamily: 'Inter', fontSize: 10, formatter: v => Math.abs(v).toFixed(1) },
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+      axisLine: { lineStyle: { color: '#1e2942' } },
+      axisLabel: { color: '#64748b', fontFamily: 'Inter,sans-serif', fontSize: 10,
+        formatter: v => Math.abs(v).toFixed(1) },
+      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.03)' } },
     },
     yAxis: {
-      type: 'category',
-      data: assets.map(a => a.toUpperCase()),
-      axisLine: { lineStyle: { color: '#2a2f3e' } },
-      axisLabel: { color: '#e0e0e0', fontFamily: 'Inter', fontSize: 11, fontWeight: 600 },
-      axisTick: { show: false }
+      type: 'category', data: assets.map(a => a.toUpperCase()),
+      axisLine: { lineStyle: { color: '#1e2942' } },
+      axisLabel: { color: '#e2e8f0', fontFamily: 'Inter,sans-serif', fontSize: 11, fontWeight: 600 },
+      axisTick: { show: false },
     },
     series: [
-      {
-        name: 'LONG', type: 'bar', stack: 'net',
-        data: longs, itemStyle: { color: '#00ff88', borderRadius: [0, 3, 3, 0] },
-        barMaxWidth: 18
-      },
-      {
-        name: 'SHORT', type: 'bar', stack: 'net',
-        data: shorts, itemStyle: { color: '#ff4757', borderRadius: [3, 0, 0, 3] },
-        barMaxWidth: 18
-      }
-    ]
+      { name: 'LONG',  type: 'bar', stack: 'net', data: longs,
+        itemStyle: { color: '#00ff88', borderRadius: [0, 3, 3, 0] }, barMaxWidth: 22 },
+      { name: 'SHORT', type: 'bar', stack: 'net', data: shorts,
+        itemStyle: { color: '#ff4757', borderRadius: [3, 0, 0, 3] }, barMaxWidth: 22 },
+    ],
   });
   chart.resize();
 }
@@ -473,26 +822,31 @@ function renderAssetChart(signals) {
 function renderSignalList(signals) {
   const list = document.getElementById('signal-list');
   document.getElementById('all-count').textContent = signals.length;
-  if (!signals.length) {
-    list.innerHTML = '';
-    return;
-  }
+  if (!signals.length) { list.innerHTML = ''; return; }
   list.innerHTML = signals.map(s => {
-    const dir = dirClass(s.direction);
-    const stale = isStale(s._age, s.time_horizon);
-    const conf = Math.round((s.confidence || 0) * 100);
+    const dir     = dc(s.direction);
+    const stale   = isStale(s._age, s.time_horizon);
+    const conf    = Math.round((s.confidence || 0) * 100);
     const boosted = (interest[s.asset_class] || 0) > 0;
-    const url = s.article_url || '#';
+    const url     = esc(s.article_url || '#');
+    const col     = barColor(dir);
     return `
-      <a class="signal-row ${stale ? 'stale' : ''}" href="${url}" target="_blank" rel="noopener">
+      <a class="signal-row${stale ? ' stale' : ''}" href="${url}" target="_blank" rel="noopener">
         <span class="dir-tag ${dir}">${(s.direction || 'NEU').toUpperCase()}</span>
-        <span class="asset-tag ${boosted ? 'boosted' : ''}" onclick="event.preventDefault();event.stopPropagation();boostAsset('${s.asset_class || ''}')">${s.asset_class || 'multi'}</span>
-        <div class="conf-cell">${conf}%
-          <div class="conf-bar"><div style="width:${conf}%"></div></div>
+        <span class="asset-tag${boosted ? ' boosted' : ''}"
+          onclick="event.preventDefault();event.stopPropagation();boostAsset('${esc(s.asset_class||'')}')">
+          ${esc(s.asset_class || 'multi')}
+        </span>
+        <div class="conf-mini">
+          <div class="conf-num">${conf}%</div>
+          <div class="conf-bar"><div style="width:${conf}%;background:${col}"></div></div>
         </div>
-        <div class="headline-cell">${escapeHtml(s.headline || s.article_title || '—')}</div>
-        <span class="horizon-cell">${s.time_horizon || ''}</span>
-        <span class="age-cell">${formatAge(s._age)}</span>
+        <div class="headline-cell">${esc(s.headline || s.article_title || '—')}</div>
+        <div class="source-meta">
+          ${esc((s.source_name || '').slice(0, 20))}<br>
+          <span class="horizon-tag">${s.time_horizon || ''}</span>
+        </div>
+        <span class="age-num">${formatAge(s._age)}</span>
       </a>`;
   }).join('');
 }
@@ -501,17 +855,16 @@ function renderNews(articles) {
   const list = document.getElementById('news-list');
   document.getElementById('news-count').textContent = articles.length;
   if (!articles.length) { list.innerHTML = ''; return; }
-  list.innerHTML = articles.slice(0, 30).map(a => {
-    const sent = (a.sentiment_label || 'neutral').slice(0, 3);
-    const cls = a.sentiment_label === 'positive' ? 'pos' : a.sentiment_label === 'negative' ? 'neg' : 'neu';
+  list.innerHTML = articles.slice(0, 60).map(a => {
+    const sent = a.sentiment_label || 'neutral';
+    const cls  = sent === 'positive' ? 'pos' : sent === 'negative' ? 'neg' : 'neu';
+    const lbl  = sent === 'positive' ? '▲ pos' : sent === 'negative' ? '▼ neg' : '— neu';
     return `
-      <a class="news-row" href="${a.url || '#'}" target="_blank" rel="noopener">
-        <span class="news-title">${escapeHtml(a.title || '—')}</span>
-        <span class="news-meta">
-          <span class="src">${escapeHtml((a.source_name || '').slice(0, 18))}</span>
-          <span class="${cls}">${sent}</span>
-          <span>${formatAge(ageMinutes(a.published_at || a.fetched_at))}</span>
-        </span>
+      <a class="news-row" href="${esc(a.url || '#')}" target="_blank" rel="noopener">
+        <span class="news-title">${esc(a.title || '—')}</span>
+        <span class="news-src">${esc((a.source_name || '').slice(0, 18))}</span>
+        <span class="news-sent ${cls}">${lbl}</span>
+        <span class="news-age">${formatAge(ageMinutes(a.published_at || a.fetched_at))}</span>
       </a>`;
   }).join('');
 }
@@ -521,14 +874,10 @@ function toggleNews() {
   document.getElementById('news-chev').classList.toggle('open');
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-  }[c]));
-}
-
 window.addEventListener('resize', () => chart && chart.resize());
 
+// Init
+loadSources();
 fetchAll();
 setInterval(fetchAll, REFRESH_MS);
 </script>
