@@ -67,6 +67,7 @@ def _make_client():
     return anthropic.Anthropic(
         base_url="https://api.minimax.io/anthropic",
         api_key=MINIMAX_CHAT_KEY,
+        timeout=25.0,  # 25s per request; prevents workers from hanging indefinitely
     )
 
 
