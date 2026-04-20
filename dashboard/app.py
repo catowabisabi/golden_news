@@ -132,6 +132,18 @@ def _stream_subprocess(label: str, cmd: list, env: dict, timeout: int | None = N
         _log("error", f"[{label}] exited with code {proc.returncode}")
 
 
+def _flush_backlog():
+    """Mark all unanalyzed articles as analyzed (outdated). Called before each run."""
+    with get_db() as db:
+        cur = db.execute(
+            "UPDATE news_articles SET is_analyzed=1 WHERE is_analyzed=0"
+        )
+        count = cur.rowcount
+        db.commit()
+    if count:
+        _log("info", f"── Flushed {count} outdated unanalyzed articles ──")
+
+
 def _run_pipeline():
     """Run collector then ai_analyzer as subprocesses. Thread-safe guard."""
     if _sched["fetching"]:
@@ -139,6 +151,7 @@ def _run_pipeline():
     _sched["fetching"] = True
     _sched["status"] = "fetching"
     env = _build_env()
+    _flush_backlog()  # discard stale backlog before fetching fresh articles
     _log("info", "── Pipeline started ──")
     try:
         _sched["stage"] = "collecting"
@@ -529,8 +542,9 @@ def index():
 
 
 if __name__ == "__main__":
+    _flush_backlog()  # clear any stale backlog from previous session on startup
     sched_thread = threading.Thread(target=_scheduler_loop, daemon=True)
     sched_thread.start()
     print(f"Golden News dashboard → http://localhost:8050")
-    print(f"Auto-fetching every {FETCH_INTERVAL_SEC // 60} minutes (immediate first run)")
+    print(f"Auto-fetching every {FETCH_INTERVAL_SEC // 60} minutes")
     server.run(host="0.0.0.0", port=8050, debug=False)
