@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS news_articles (
     sentiment_score REAL,  -- -1 to 1
     sentiment_label TEXT CHECK (sentiment_label IN ('positive', 'negative', 'neutral')),
     is_analyzed INTEGER NOT NULL DEFAULT 0,
+    is_outdated INTEGER NOT NULL DEFAULT 0,
     is_trading_signal INTEGER NOT NULL DEFAULT 0,
     UNIQUE(source_id, source_article_id)
 );

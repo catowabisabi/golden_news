@@ -133,15 +133,15 @@ def _stream_subprocess(label: str, cmd: list, env: dict, timeout: int | None = N
 
 
 def _flush_backlog():
-    """Mark all unanalyzed articles as analyzed (outdated). Called before each run."""
+    """Mark unanalyzed articles as outdated so they are skipped and hidden."""
     with get_db() as db:
         cur = db.execute(
-            "UPDATE news_articles SET is_analyzed=1 WHERE is_analyzed=0"
+            "UPDATE news_articles SET is_analyzed=1, is_outdated=1 WHERE is_analyzed=0"
         )
         count = cur.rowcount
         db.commit()
     if count:
-        _log("info", f"── Flushed {count} outdated unanalyzed articles ──")
+        _log("info", f"── Flushed {count} outdated articles (will not be shown) ──")
 
 
 def _run_pipeline():
@@ -203,7 +203,7 @@ def get_db():
 
 
 def get_latest_articles(limit=100, source=None, asset=None, sort="newest"):
-    conditions = ["a.is_analyzed = 1"]
+    conditions = ["a.is_analyzed = 1", "a.is_outdated = 0"]
     params: list = []
     if source:
         conditions.append("s.display_name = ?")
