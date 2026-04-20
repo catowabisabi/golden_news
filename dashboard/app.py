@@ -43,6 +43,7 @@ def _load_env_var(key: str) -> str:
 
 PAUSE_PASSWORD = _load_env_var("PAUSE_PASSWORD")
 _paused = False
+_current_analyzer_proc = None  # tracked so pause can kill it mid-run
 
 # ── Background scheduler ──────────────────────────────────────────────────────
 FETCH_INTERVAL_SEC = 15 * 60  # 15 minutes
@@ -97,10 +98,13 @@ def _classify(line: str) -> str:
 
 def _stream_subprocess(label: str, cmd: list, env: dict, timeout: int | None = None):
     """Run cmd, stream stdout/stderr line-by-line into log buffer and update _sched progress."""
+    global _current_analyzer_proc
     proc = subprocess.Popen(
         cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, bufsize=1,
     )
+    if label == "analyzer":
+        _current_analyzer_proc = proc
 
     def _read():
         for raw in proc.stdout:
@@ -122,6 +126,8 @@ def _stream_subprocess(label: str, cmd: list, env: dict, timeout: int | None = N
         proc.kill()
         _log("error", f"[{label}] killed after {timeout}s timeout")
     reader.join(timeout=5)
+    if label == "analyzer":
+        _current_analyzer_proc = None
     if proc.returncode and proc.returncode != 0:
         _log("error", f"[{label}] exited with code {proc.returncode}")
 
@@ -167,7 +173,6 @@ def _run_pipeline():
 
 
 def _scheduler_loop():
-    _run_pipeline()  # Fetch immediately on startup
     while True:
         next_ts = time.time() + FETCH_INTERVAL_SEC
         _sched["next_fetch"] = datetime.fromtimestamp(
@@ -449,26 +454,36 @@ def api_source_status():
 
 @server.route("/api/scheduler-status")
 def api_scheduler_status():
+    with get_db() as db:
+        row = db.execute(
+            "SELECT COUNT(*) FROM news_articles WHERE is_analyzed=0"
+            " AND (summary IS NOT NULL OR content IS NOT NULL)"
+        ).fetchone()
+        queued = row[0] if row else 0
     return jsonify({
-        "status":   _sched["status"],
-        "stage":    _sched["stage"],
-        "progress": _sched["progress"],
-        "last_fetch": _sched["last_fetch"],
-        "next_fetch": _sched["next_fetch"],
-        "fetching": _sched["fetching"],
-        "paused":   _paused,
+        "status":      _sched["status"],
+        "stage":       _sched["stage"],
+        "progress":    _sched["progress"],
+        "last_fetch":  _sched["last_fetch"],
+        "next_fetch":  _sched["next_fetch"],
+        "fetching":    _sched["fetching"],
+        "paused":      _paused,
+        "queued_count": queued,
     })
 
 
 @server.route("/api/pause", methods=["POST", "OPTIONS"])
 def api_pause():
-    global _paused
+    global _paused, _current_analyzer_proc
     if request.method == "OPTIONS":
         return "", 204
     body = request.get_json(silent=True) or {}
     if body.get("password") != PAUSE_PASSWORD:
         return jsonify({"ok": False, "reason": "wrong password"}), 403
     _paused = True
+    if _current_analyzer_proc and _current_analyzer_proc.poll() is None:
+        _current_analyzer_proc.terminate()
+        _log("warn", "── Analyzer terminated (pause requested) ──")
     _log("warn", "── Server paused by user — analysis suspended ──")
     return jsonify({"ok": True, "paused": True})
 
@@ -499,6 +514,9 @@ def api_pipeline_logs():
 def api_fetch_now():
     if request.method == "OPTIONS":
         return "", 204
+    body = request.get_json(silent=True) or {}
+    if body.get("password") != PAUSE_PASSWORD:
+        return jsonify({"queued": False, "reason": "wrong password"}), 403
     if _sched["fetching"]:
         return jsonify({"queued": False, "reason": "already fetching"}), 202
     threading.Thread(target=_run_pipeline, daemon=True).start()

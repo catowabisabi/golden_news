@@ -516,13 +516,16 @@ body::before {
       </div>
       <span class="stat-pill"><b id="stat-signals">0</b> signals</span>
       <span class="stat-pill"><b class="gold-num" id="stat-strong">0</b> strong</span>
+      <span class="stat-pill"><b id="stat-queued">—</b> queued</span>
+      <span class="stat-pill" id="pill-analyzing" style="display:none;color:var(--cyan)">⚙ <b id="stat-progress">—</b></span>
+      <span class="stat-pill" id="pill-next-fetch" title="Next scheduled fetch">⏱ <b id="stat-countdown">—</b></span>
       <span id="last-update">—</span>
     </div>
     <button class="pause-btn" id="pause-btn" onclick="openPauseModal()">
       <span id="pause-icon">⏸</span>
       <span id="pause-label">Pause</span>
     </button>
-    <button class="fetch-btn" id="fetch-btn" onclick="fetchNow()">
+    <button class="fetch-btn" id="fetch-btn" onclick="openFetchModal()">
       <span id="fetch-icon">⟳</span>
       <span id="fetch-label">Fetch Now</span>
     </button>
@@ -769,6 +772,20 @@ function _stageLabel(s) {
   return 'Fetching…';
 }
 
+// ── Countdown timer (1s tick) ─────────────────────────────────────────────────
+let _nextFetchTs = null;
+setInterval(() => {
+  const el = document.getElementById('stat-countdown');
+  if (!_nextFetchTs) { el.textContent = '—'; return; }
+  const diff = Math.max(0, Math.floor((_nextFetchTs - Date.now()) / 1000));
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+  el.textContent = h > 0
+    ? `${h}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`
+    : `${m}m ${String(s).padStart(2,'0')}s`;
+}, 1000);
+
 // Continuous status ticker — runs every 3s regardless of who triggered fetch
 setInterval(async () => {
   try {
@@ -795,6 +812,28 @@ setInterval(async () => {
       else upd.style.color = '';
     }
 
+    // Queue counter
+    document.getElementById('stat-queued').textContent =
+      s.queued_count != null ? s.queued_count : '—';
+
+    // Analyzing progress pill
+    const pillAn = document.getElementById('pill-analyzing');
+    if (s.fetching && s.stage === 'analyzing' && s.progress) {
+      pillAn.style.display = '';
+      document.getElementById('stat-progress').textContent = s.progress;
+    } else {
+      pillAn.style.display = 'none';
+    }
+
+    // Next fetch countdown source
+    if (s.next_fetch) _nextFetchTs = new Date(s.next_fetch).getTime();
+
+    // Next fetch pill label
+    const pillFetch = document.getElementById('pill-next-fetch');
+    pillFetch.title = s.paused
+      ? 'Fetch scheduled (analysis paused)'
+      : 'Next fetch + analysis';
+
     // Pause state UI
     _applyPauseState(s.paused);
   } catch {}
@@ -818,21 +857,28 @@ function _applyPauseState(paused) {
   }
 }
 
-// ── Pause Modal ───────────────────────────────────────────────────────────────
-let _pauseAction = null; // 'pause' | 'unpause'
+// ── Modal (shared for pause/unpause/fetch) ────────────────────────────────────
+let _modalAction = null; // 'pause' | 'unpause' | 'fetch'
+
+function _openModal(action, title, confirmLabel) {
+  _modalAction = action;
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-confirm-btn').textContent = confirmLabel;
+  document.getElementById('modal-pw').value = '';
+  document.getElementById('modal-err').textContent = '';
+  document.getElementById('modal-overlay').classList.add('visible');
+  setTimeout(() => document.getElementById('modal-pw').focus(), 50);
+}
 
 function openPauseModal() {
   fetch(API_BASE + '/api/scheduler-status').then(r => r.json()).then(s => {
-    _pauseAction = s.paused ? 'unpause' : 'pause';
-    document.getElementById('modal-title').textContent =
-      _pauseAction === 'pause' ? '⏸ Pause Analysis' : '▶ Resume Analysis';
-    document.getElementById('modal-confirm-btn').textContent =
-      _pauseAction === 'pause' ? 'Pause' : 'Resume';
-    document.getElementById('modal-pw').value = '';
-    document.getElementById('modal-err').textContent = '';
-    document.getElementById('modal-overlay').classList.add('visible');
-    setTimeout(() => document.getElementById('modal-pw').focus(), 50);
+    if (s.paused) _openModal('unpause', '▶ Resume Analysis', 'Resume');
+    else          _openModal('pause',   '⏸ Pause Analysis',  'Pause');
   }).catch(() => {});
+}
+
+function openFetchModal() {
+  _openModal('fetch', '⟳ Fetch Now', 'Fetch');
 }
 
 function closePauseModal(e) {
@@ -845,7 +891,21 @@ async function confirmPause() {
   const errEl = document.getElementById('modal-err');
   errEl.textContent = '';
   try {
-    const endpoint = _pauseAction === 'pause' ? '/api/pause' : '/api/unpause';
+    if (_modalAction === 'fetch') {
+      const r = await fetch(API_BASE + '/api/fetch-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await r.json();
+      if (data.reason === 'wrong password') { errEl.textContent = 'Wrong password.'; return; }
+      if (!data.queued && data.reason === 'already fetching') {
+        errEl.textContent = 'Already fetching.'; return;
+      }
+      document.getElementById('modal-overlay').classList.remove('visible');
+      return;
+    }
+    const endpoint = _modalAction === 'pause' ? '/api/pause' : '/api/unpause';
     const r = await fetch(API_BASE + endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -858,12 +918,6 @@ async function confirmPause() {
   } catch {
     errEl.textContent = 'Server error, try again.';
   }
-}
-
-async function fetchNow() {
-  try {
-    await fetch(API_BASE + '/api/fetch-now', { method: 'POST' });
-  } catch {}
 }
 
 // ── Filter & Sort ─────────────────────────────────────────────────────────────
