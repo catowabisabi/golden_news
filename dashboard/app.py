@@ -63,11 +63,11 @@ def _run_pipeline():
     try:
         subprocess.run(
             [sys.executable, str(PROJECT_ROOT / "src" / "collector.py")],
-            timeout=180, capture_output=True, env=env,
+            timeout=300, env=env,
         )
         subprocess.run(
             [sys.executable, str(PROJECT_ROOT / "src" / "ai_analyzer.py")],
-            timeout=180, capture_output=True, env=env,
+            env=env,  # no timeout — streaming; completes when all articles done
         )
         _sched["status"] = "idle"
         _sched["last_fetch"] = datetime.now(timezone.utc).isoformat()
