@@ -398,6 +398,44 @@ body::before {
   .chips .chip:nth-child(n+6) { display: none; }
   #last-update { display: none; }
 }
+
+/* ── Pipeline Log panel ── */
+.log-panel {
+  margin: 24px 28px 32px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+.log-toggle {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 13px 18px; background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: 12px; font-weight: 600;
+  letter-spacing: .6px; text-transform: uppercase;
+}
+.log-toggle:hover { color: var(--text); }
+.log-toggle .chev { font-size: 9px; transition: transform .2s; }
+.log-toggle .chev.open { transform: rotate(90deg); }
+.log-err-badge {
+  margin-left: 4px; padding: 2px 7px; border-radius: 10px;
+  background: rgba(255,71,87,0.2); color: var(--red);
+  font-size: 10px; font-weight: 700;
+}
+.log-body {
+  display: none; padding: 0 14px 14px;
+}
+.log-body.open { display: block; }
+.log-lines {
+  font-family: 'Menlo','Consolas',monospace; font-size: 11px;
+  line-height: 1.65; max-height: 320px; overflow-y: auto;
+  background: rgba(0,0,0,0.35); border-radius: 8px;
+  padding: 10px 14px;
+}
+.log-line         { color: #94a3b8; }
+.log-line.error   { color: var(--red); }
+.log-line.warn    { color: var(--amber); }
+.log-line .log-ts { color: #334155; margin-right: 6px; }
 </style>
 </head>
 <body>
@@ -495,6 +533,18 @@ body::before {
   <div class="news-list" id="news-list"></div>
 
 </main>
+
+<div class="log-panel">
+  <button class="log-toggle" onclick="toggleLog()">
+    <span class="chev" id="log-chev">▶</span>
+    Pipeline Log
+    <span id="log-err-badge" class="log-err-badge" style="display:none">0 errors</span>
+    <span id="log-last" style="margin-left:auto;font-size:10px;font-weight:400;color:var(--muted)"></span>
+  </button>
+  <div class="log-body" id="log-body">
+    <div class="log-lines" id="log-lines"><span style="color:var(--muted)">No log yet.</span></div>
+  </div>
+</div>
 
 <script>
 const API_BASE  = location.protocol === 'file:' ? 'http://localhost:8050' : '';
@@ -873,6 +923,63 @@ function toggleNews() {
   document.getElementById('news-list').classList.toggle('open');
   document.getElementById('news-chev').classList.toggle('open');
 }
+
+// ── Pipeline Log ──────────────────────────────────────────────────────────────
+let _logSince = null;
+let _logOpen  = false;
+
+function toggleLog() {
+  _logOpen = !_logOpen;
+  document.getElementById('log-body').classList.toggle('open', _logOpen);
+  document.getElementById('log-chev').classList.toggle('open', _logOpen);
+  if (_logOpen) fetchLogs();
+}
+
+async function fetchLogs() {
+  try {
+    const url = API_BASE + '/api/pipeline-logs' + (_logSince ? `?since=${encodeURIComponent(_logSince)}` : '');
+    const r = await fetch(url);
+    if (!r.ok) return;
+    const lines = await r.json();
+    if (!lines.length) return;
+
+    _logSince = lines[lines.length - 1].t;
+
+    const container = document.getElementById('log-lines');
+    const wasEmpty = container.querySelector('span[style]');
+    if (wasEmpty) container.innerHTML = '';
+
+    let errorCount = parseInt(document.getElementById('log-err-badge').textContent) || 0;
+    lines.forEach(l => {
+      if (l.level === 'error') errorCount++;
+      const div = document.createElement('div');
+      div.className = 'log-line ' + (l.level || 'info');
+      const ts = new Date(l.t).toLocaleTimeString();
+      div.innerHTML = `<span class="log-ts">${ts}</span>${esc(l.msg)}`;
+      container.appendChild(div);
+    });
+
+    // keep last 300 lines in DOM
+    while (container.children.length > 300) container.removeChild(container.firstChild);
+    container.scrollTop = container.scrollHeight;
+
+    // badge
+    const badge = document.getElementById('log-err-badge');
+    if (errorCount > 0) {
+      badge.textContent = errorCount + ' error' + (errorCount > 1 ? 's' : '');
+      badge.style.display = '';
+    }
+
+    // timestamp
+    document.getElementById('log-last').textContent =
+      'last: ' + new Date(lines[lines.length - 1].t).toLocaleTimeString();
+  } catch {}
+}
+
+// Poll logs every 5s when open; always reset error badge when pipeline is idle
+setInterval(() => {
+  if (_logOpen) fetchLogs();
+}, 5000);
 
 window.addEventListener('resize', () => chart && chart.resize());
 

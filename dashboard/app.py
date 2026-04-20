@@ -14,6 +14,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +36,16 @@ _sched = {
     "fetching": False,
 }
 
+_pipeline_logs: deque = deque(maxlen=300)  # circular buffer, last 300 lines
+
+
+def _log(level: str, msg: str):
+    _pipeline_logs.append({
+        "t": datetime.now(timezone.utc).isoformat(),
+        "level": level,   # info | warn | error
+        "msg": msg,
+    })
+
 
 def _build_env():
     """Build subprocess env with MINIMAX_CHAT_KEY from api_keys.json if not already set."""
@@ -53,6 +64,23 @@ def _build_env():
     return env
 
 
+def _capture(label: str, result: subprocess.CompletedProcess):
+    """Parse subprocess stdout/stderr into _pipeline_logs."""
+    combined = (result.stdout or "") + (result.stderr or "")
+    for raw in combined.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        low = line.lower()
+        if any(k in low for k in ("error", "err]", "exception", "traceback", "failed", "could not")):
+            level = "error"
+        elif any(k in low for k in ("warn", "warning")):
+            level = "warn"
+        else:
+            level = "info"
+        _log(level, f"[{label}] {line}")
+
+
 def _run_pipeline():
     """Run collector then ai_analyzer as subprocesses. Thread-safe guard."""
     if _sched["fetching"]:
@@ -60,18 +88,34 @@ def _run_pipeline():
     _sched["fetching"] = True
     _sched["status"] = "fetching"
     env = _build_env()
+    _log("info", "── Pipeline started ──")
     try:
-        subprocess.run(
+        _log("info", "[collector] starting...")
+        r = subprocess.run(
             [sys.executable, str(PROJECT_ROOT / "src" / "collector.py")],
-            timeout=300, env=env,
+            timeout=300, env=env, capture_output=True, text=True,
         )
-        subprocess.run(
+        _capture("collector", r)
+        if r.returncode != 0:
+            _log("error", f"[collector] exited with code {r.returncode}")
+
+        _log("info", "[analyzer] starting...")
+        r = subprocess.run(
             [sys.executable, str(PROJECT_ROOT / "src" / "ai_analyzer.py")],
-            env=env,  # no timeout — streaming; completes when all articles done
+            env=env, capture_output=True, text=True,
         )
+        _capture("analyzer", r)
+        if r.returncode != 0:
+            _log("error", f"[analyzer] exited with code {r.returncode}")
+
         _sched["status"] = "idle"
         _sched["last_fetch"] = datetime.now(timezone.utc).isoformat()
-    except Exception:
+        _log("info", "── Pipeline complete ──")
+    except subprocess.TimeoutExpired as e:
+        _log("error", f"Pipeline timeout: {e}")
+        _sched["status"] = "error"
+    except Exception as e:
+        _log("error", f"Pipeline error: {e}")
         _sched["status"] = "error"
     finally:
         _sched["fetching"] = False
@@ -330,6 +374,15 @@ def api_scheduler_status():
         "next_fetch": _sched["next_fetch"],
         "fetching": _sched["fetching"],
     })
+
+
+@server.route("/api/pipeline-logs")
+def api_pipeline_logs():
+    since = request.args.get("since")  # ISO timestamp — client asks for new lines only
+    logs = list(_pipeline_logs)
+    if since:
+        logs = [l for l in logs if l["t"] > since]
+    return jsonify(logs)
 
 
 @server.route("/api/fetch-now", methods=["POST", "OPTIONS"])
