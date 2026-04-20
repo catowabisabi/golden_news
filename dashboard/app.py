@@ -6,6 +6,8 @@ Serves the signal-first dashboard (index.html) and a small REST API
 over the SQLite database. Includes a 15-minute background auto-fetch
 scheduler and filter/sort support on all collection endpoints.
 """
+import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -34,20 +36,38 @@ _sched = {
 }
 
 
+def _build_env():
+    """Build subprocess env with MINIMAX_CHAT_KEY from api_keys.json if not already set."""
+    env = os.environ.copy()
+    if not env.get("MINIMAX_CHAT_KEY"):
+        keys_path = PROJECT_ROOT / "config" / "api_keys.json"
+        if keys_path.exists():
+            try:
+                keys = json.loads(keys_path.read_text())
+                key = keys.get("minimax_chat", "")
+                if key:
+                    env["MINIMAX_CHAT_KEY"] = key
+            except Exception:
+                pass
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
 def _run_pipeline():
     """Run collector then ai_analyzer as subprocesses. Thread-safe guard."""
     if _sched["fetching"]:
         return False
     _sched["fetching"] = True
     _sched["status"] = "fetching"
+    env = _build_env()
     try:
         subprocess.run(
             [sys.executable, str(PROJECT_ROOT / "src" / "collector.py")],
-            timeout=180, capture_output=True,
+            timeout=180, capture_output=True, env=env,
         )
         subprocess.run(
             [sys.executable, str(PROJECT_ROOT / "src" / "ai_analyzer.py")],
-            timeout=180, capture_output=True,
+            timeout=180, capture_output=True, env=env,
         )
         _sched["status"] = "idle"
         _sched["last_fetch"] = datetime.now(timezone.utc).isoformat()

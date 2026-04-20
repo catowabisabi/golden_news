@@ -25,59 +25,117 @@ def get_api_keys():
     with open(keys_path) as f:
         return json.load(f)
 
+def _fetch_rss_url(url):
+    """Fetch and parse a single RSS URL. Returns list of article dicts."""
+    try:
+        r = requests.get(url, timeout=15, headers={"User-Agent": "GoldenNews/1.0"})
+        if r.status_code != 200:
+            return []
+        feed = feedparser.parse(r.text)
+        return [
+            {
+                "title": e.get("title", ""),
+                "summary": e.get("summary", "")[:500],
+                "content": e.get("content", [{}])[0].get("value", "")[:2000],
+                "url": e.get("link", ""),
+                "author": e.get("author", ""),
+                "published_at": e.get("published", datetime.now().isoformat()),
+            }
+            for e in feed.entries
+        ]
+    except Exception:
+        return []
+
+
+# Asset-specific Google News RSS queries (5 articles each = 30 total per run)
+_GOOGLE_NEWS_QUERIES = [
+    ("gold+silver+precious+metals+price+bullion",        5),
+    ("bitcoin+ethereum+crypto+cryptocurrency+market",    5),
+    ("stock+market+SP500+nasdaq+earnings+equities",      5),
+    ("oil+crude+OPEC+energy+petroleum+price",            5),
+    ("federal+reserve+bonds+interest+rates+inflation",   5),
+    ("USD+EUR+GBP+forex+currency+exchange+rate",         5),
+]
+
+# Extra free RSS feeds for asset-class diversity (no API key needed)
+_EXTRA_FEEDS = [
+    "https://www.coindesk.com/arc/outboundfeeds/rss/",                        # crypto
+    "https://feeds.marketwatch.com/marketwatch/topstories/",                  # stocks
+    "https://www.kitco.com/rss/kitco-news.xml",                               # gold
+    "https://www.oilprice.com/rss/main",                                      # oil/energy
+    "https://www.forexlive.com/feed/news",                                    # forex
+    "https://www.reddit.com/r/investing/.rss",                                # stocks/general
+    "https://www.reddit.com/r/wallstreetbets/.rss",                           # stocks
+    "https://www.reddit.com/r/Bitcoin/.rss",                                  # crypto
+    "https://www.reddit.com/r/Gold/.rss",                                     # gold
+]
+
+
 def collect_rss(source, keys):
-    """Collect from RSS feed"""
+    """Collect from RSS feed with multi-asset coverage."""
     base_url = source["base_url"]
     if not base_url:
         return []
 
-    # Build RSS URL
-    urls_to_try = []
     name = source["name"]
+    articles = []
 
     if "google" in name.lower():
-        urls_to_try.append(f"{base_url}/search?q=breaking+news+oil+price&hl=en-US&gl=US&ceid=US:en")
-        urls_to_try.append(f"{base_url}/search?q=geopolitics+markets&hl=en-US&gl=US&ceid=US:en")
-    elif "cnbc" in name.lower():
+        # Query EVERY asset class topic; collect up to 5 articles each
+        for query, limit in _GOOGLE_NEWS_QUERIES:
+            url = f"{base_url}/search?q={query}&hl=en-US&gl=US&ceid=US:en"
+            batch = _fetch_rss_url(url)
+            articles.extend(batch[:limit])
+        return articles[:30]
+
+    # Determine URLs to try (first success wins, except Google above)
+    urls_to_try = []
+    if "cnbc" in name.lower():
         urls_to_try.append("https://search.cnbc.com/rs/search/combinedcms/view.xml?ids=36")
     elif "bbc" in name.lower():
         urls_to_try.append(f"{base_url}/world/rss.xml")
     elif "reddit" in name.lower():
-        urls_to_try.append("https://www.reddit.com/r/news/.rss")
-        urls_to_try.append("https://www.reddit.com/r/worldnews/.rss")
+        # Finance + general subreddits for asset diversity
+        urls_to_try += [
+            "https://www.reddit.com/r/investing/.rss",
+            "https://www.reddit.com/r/wallstreetbets/.rss",
+            "https://www.reddit.com/r/Bitcoin/.rss",
+            "https://www.reddit.com/r/Gold/.rss",
+            "https://www.reddit.com/r/news/.rss",
+            "https://www.reddit.com/r/worldnews/.rss",
+        ]
     elif "zerohedge" in name.lower():
         urls_to_try.append("https://www.zerohedge.com/feed")
     elif "investing" in name.lower():
         urls_to_try.append(f"{base_url}/rss/news.rss")
     elif "yahoo" in name.lower():
-        urls_to_try.append("https://finance.yahoo.com/news/rssindex")
+        urls_to_try += [
+            "https://finance.yahoo.com/news/rssindex",
+            "https://finance.yahoo.com/rss/topstories",
+        ]
     elif "guardian" in name.lower():
-        urls_to_try.append("https://www.theguardian.com/world/rss")
+        urls_to_try += [
+            "https://www.theguardian.com/business/rss",
+            "https://www.theguardian.com/world/rss",
+        ]
+    elif "duckduckgo" in name.lower():
+        # Rotate through extra free feeds for asset diversity
+        for feed_url in _EXTRA_FEEDS:
+            batch = _fetch_rss_url(feed_url)
+            articles.extend(batch[:5])
+        return articles[:30]
     else:
         urls_to_try.append(f"{base_url}/feed")
 
-    articles = []
     for url in urls_to_try:
-        try:
-            r = requests.get(url, timeout=15, headers={"User-Agent": "GoldenNews/1.0"})
-            if r.status_code != 200:
-                continue
+        batch = _fetch_rss_url(url)
+        if batch:
+            articles.extend(batch[:10])
+            # Reddit: collect from all subreddits; others stop at first success
+            if "reddit" not in name.lower():
+                break
 
-            feed = feedparser.parse(r.text)
-            for entry in feed.entries[:15]:
-                articles.append({
-                    "title": entry.get("title", ""),
-                    "summary": entry.get("summary", "")[:500],
-                    "content": entry.get("content", [{}])[0].get("value", "")[:2000],
-                    "url": entry.get("link", ""),
-                    "author": entry.get("author", ""),
-                    "published_at": entry.get("published", datetime.now().isoformat()),
-                })
-            break  # Got articles, stop trying
-        except Exception:
-            continue
-
-    return articles[:10]
+    return articles[:30]
 
 def collect_rest(source, keys):
     """Collect from REST API"""
