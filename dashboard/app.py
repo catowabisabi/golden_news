@@ -239,7 +239,7 @@ def get_latest_articles(limit=100, source=None, asset=None, sort="newest"):
 def get_active_signals(
     limit=100, asset=None, source=None, sort="newest", direction=None
 ):
-    conditions = ["ts.is_active = 1"]
+    conditions = ["ts.is_active = 1", "a.is_outdated = 0"]
     params: list = []
     if asset:
         conditions.append("ts.asset_class = ?")
