@@ -26,6 +26,24 @@ DASHBOARD_DIR = Path(__file__).parent
 
 server = Flask(__name__, static_folder=None)
 
+
+def _load_env_var(key: str) -> str:
+    """Read a variable from .env file at project root."""
+    val = os.environ.get(key, "")
+    if not val:
+        env_path = PROJECT_ROOT / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                line = line.strip()
+                if line.startswith(key + "="):
+                    val = line[len(key) + 1:]
+                    break
+    return val
+
+
+PAUSE_PASSWORD = _load_env_var("PAUSE_PASSWORD")
+_paused = False
+
 # ── Background scheduler ──────────────────────────────────────────────────────
 FETCH_INTERVAL_SEC = 15 * 60  # 15 minutes
 
@@ -124,12 +142,15 @@ def _run_pipeline():
             [sys.executable, str(PROJECT_ROOT / "src" / "collector.py")],
             env, timeout=300)
 
-        _sched["stage"] = "analyzing"
-        _sched["progress"] = ""
-        _log("info", "[analyzer] starting...")
-        _stream_subprocess("analyzer",
-            [sys.executable, str(PROJECT_ROOT / "src" / "ai_analyzer.py")],
-            env)  # no timeout for analyzer
+        if _paused:
+            _log("info", "── Analysis skipped (server is paused) ──")
+        else:
+            _sched["stage"] = "analyzing"
+            _sched["progress"] = ""
+            _log("info", "[analyzer] starting...")
+            _stream_subprocess("analyzer",
+                [sys.executable, str(PROJECT_ROOT / "src" / "ai_analyzer.py")],
+                env)  # no timeout for analyzer
 
         _sched["status"] = "idle"
         _sched["stage"] = ""
@@ -435,7 +456,34 @@ def api_scheduler_status():
         "last_fetch": _sched["last_fetch"],
         "next_fetch": _sched["next_fetch"],
         "fetching": _sched["fetching"],
+        "paused":   _paused,
     })
+
+
+@server.route("/api/pause", methods=["POST", "OPTIONS"])
+def api_pause():
+    global _paused
+    if request.method == "OPTIONS":
+        return "", 204
+    body = request.get_json(silent=True) or {}
+    if body.get("password") != PAUSE_PASSWORD:
+        return jsonify({"ok": False, "reason": "wrong password"}), 403
+    _paused = True
+    _log("warn", "── Server paused by user — analysis suspended ──")
+    return jsonify({"ok": True, "paused": True})
+
+
+@server.route("/api/unpause", methods=["POST", "OPTIONS"])
+def api_unpause():
+    global _paused
+    if request.method == "OPTIONS":
+        return "", 204
+    body = request.get_json(silent=True) or {}
+    if body.get("password") != PAUSE_PASSWORD:
+        return jsonify({"ok": False, "reason": "wrong password"}), 403
+    _paused = False
+    _log("info", "── Server unpaused by user — analysis resumed ──")
+    return jsonify({"ok": True, "paused": False})
 
 
 @server.route("/api/pipeline-logs")

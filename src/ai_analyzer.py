@@ -113,8 +113,8 @@ def _analyze_one(article_id, title, summary, content):
             err_str = str(e)
             if "429" in err_str or "rate_limit" in err_str.lower():
                 if attempt == 0:
-                    print(f"      [429] {title[:40]}: server overloaded, waiting 15 min...")
-                    time.sleep(15 * 60)
+                    print(f"      [429] {title[:40]}: server overloaded, waiting 1 hour...")
+                    time.sleep(60 * 60)
                     continue
                 print(f"      [429] {title[:40]}: still overloaded after cooldown, skipping")
                 return article_id, _SENTINEL_ERROR

@@ -102,6 +102,65 @@ body::before {
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { display: inline-block; animation: spin .9s linear infinite; }
 
+.pause-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 8px;
+  background: rgba(255,184,0,0.08); border: 1px solid rgba(255,184,0,0.28);
+  color: var(--amber); font: 600 11px 'Inter',sans-serif;
+  cursor: pointer; transition: all 0.2s; letter-spacing: 0.5px; outline: none;
+}
+.pause-btn:hover { background: rgba(255,184,0,0.15); border-color: rgba(255,184,0,0.5); }
+.pause-btn.paused {
+  background: rgba(255,71,87,0.1); border-color: rgba(255,71,87,0.4);
+  color: var(--red);
+}
+
+/* Pause Banner */
+.pause-banner {
+  display: none; position: sticky; top: 60px; z-index: 55;
+  padding: 10px 28px;
+  background: rgba(255,71,87,0.12);
+  border-bottom: 1px solid rgba(255,71,87,0.3);
+  text-align: center;
+  font-size: 13px; font-weight: 600; color: var(--red);
+  letter-spacing: 0.2px;
+}
+.pause-banner.visible { display: block; }
+
+/* Password Modal */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+  align-items: center; justify-content: center;
+}
+.modal-overlay.visible { display: flex; }
+.modal {
+  background: var(--bg2); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px; padding: 28px 32px; width: 320px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+}
+.modal h3 { font-size: 15px; font-weight: 700; margin-bottom: 18px; color: var(--text); }
+.modal input {
+  width: 100%; padding: 10px 14px; border-radius: 8px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  color: var(--text); font: 14px 'Inter',sans-serif; outline: none;
+  margin-bottom: 10px;
+}
+.modal input:focus { border-color: rgba(255,215,0,0.4); }
+.modal-err { font-size: 12px; color: var(--red); min-height: 18px; margin-bottom: 10px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.modal-cancel {
+  padding: 8px 16px; border-radius: 7px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); font: 600 12px 'Inter',sans-serif;
+  cursor: pointer;
+}
+.modal-confirm {
+  padding: 8px 16px; border-radius: 7px; border: none;
+  background: rgba(255,215,0,0.15); color: var(--gold);
+  font: 600 12px 'Inter',sans-serif; cursor: pointer;
+}
+.modal-confirm:hover { background: rgba(255,215,0,0.25); }
+
 /* ── Toolbar ── */
 .toolbar {
   position: sticky; top: 60px; z-index: 50;
@@ -459,12 +518,34 @@ body::before {
       <span class="stat-pill"><b class="gold-num" id="stat-strong">0</b> strong</span>
       <span id="last-update">—</span>
     </div>
+    <button class="pause-btn" id="pause-btn" onclick="openPauseModal()">
+      <span id="pause-icon">⏸</span>
+      <span id="pause-label">Pause</span>
+    </button>
     <button class="fetch-btn" id="fetch-btn" onclick="fetchNow()">
       <span id="fetch-icon">⟳</span>
       <span id="fetch-label">Fetch Now</span>
     </button>
   </div>
 </header>
+
+<!-- Pause Banner -->
+<div class="pause-banner" id="pause-banner">
+  ⏸ Server under pause — news is being fetched but AI analysis is suspended.
+</div>
+
+<!-- Password Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="closePauseModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3 id="modal-title">Pause Analysis</h3>
+    <input type="password" id="modal-pw" placeholder="Enter password" onkeydown="if(event.key==='Enter')confirmPause()">
+    <div class="modal-err" id="modal-err"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closePauseModal()">Cancel</button>
+      <button class="modal-confirm" id="modal-confirm-btn" onclick="confirmPause()">Confirm</button>
+    </div>
+  </div>
+</div>
 
 <!-- Filter / Sort Toolbar -->
 <div class="toolbar">
@@ -713,8 +794,71 @@ setInterval(async () => {
       if (s.status === 'error') upd.style.color = 'var(--red)';
       else upd.style.color = '';
     }
+
+    // Pause state UI
+    _applyPauseState(s.paused);
   } catch {}
 }, 3000);
+
+function _applyPauseState(paused) {
+  const banner = document.getElementById('pause-banner');
+  const pauseBtn = document.getElementById('pause-btn');
+  const pauseIcon = document.getElementById('pause-icon');
+  const pauseLabel = document.getElementById('pause-label');
+  if (paused) {
+    banner.classList.add('visible');
+    pauseBtn.classList.add('paused');
+    pauseIcon.textContent = '▶';
+    pauseLabel.textContent = 'Resume';
+  } else {
+    banner.classList.remove('visible');
+    pauseBtn.classList.remove('paused');
+    pauseIcon.textContent = '⏸';
+    pauseLabel.textContent = 'Pause';
+  }
+}
+
+// ── Pause Modal ───────────────────────────────────────────────────────────────
+let _pauseAction = null; // 'pause' | 'unpause'
+
+function openPauseModal() {
+  fetch(API_BASE + '/api/scheduler-status').then(r => r.json()).then(s => {
+    _pauseAction = s.paused ? 'unpause' : 'pause';
+    document.getElementById('modal-title').textContent =
+      _pauseAction === 'pause' ? '⏸ Pause Analysis' : '▶ Resume Analysis';
+    document.getElementById('modal-confirm-btn').textContent =
+      _pauseAction === 'pause' ? 'Pause' : 'Resume';
+    document.getElementById('modal-pw').value = '';
+    document.getElementById('modal-err').textContent = '';
+    document.getElementById('modal-overlay').classList.add('visible');
+    setTimeout(() => document.getElementById('modal-pw').focus(), 50);
+  }).catch(() => {});
+}
+
+function closePauseModal(e) {
+  if (e && e.target !== document.getElementById('modal-overlay')) return;
+  document.getElementById('modal-overlay').classList.remove('visible');
+}
+
+async function confirmPause() {
+  const pw = document.getElementById('modal-pw').value;
+  const errEl = document.getElementById('modal-err');
+  errEl.textContent = '';
+  try {
+    const endpoint = _pauseAction === 'pause' ? '/api/pause' : '/api/unpause';
+    const r = await fetch(API_BASE + endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    });
+    const data = await r.json();
+    if (!data.ok) { errEl.textContent = 'Wrong password.'; return; }
+    _applyPauseState(data.paused);
+    document.getElementById('modal-overlay').classList.remove('visible');
+  } catch {
+    errEl.textContent = 'Server error, try again.';
+  }
+}
 
 async function fetchNow() {
   try {
