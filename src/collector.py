@@ -12,6 +12,34 @@ from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+_MAX_RETRIES = 3
+_BACKOFF_BASE = 2  # seconds
+
+
+def _get(url: str, **kwargs) -> requests.Response:
+    """GET with exponential backoff on transient failures (5xx / 429 / network)."""
+    kwargs.setdefault("timeout", 15)
+    kwargs.setdefault("headers", {"User-Agent": "GoldenNews/1.0"})
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            resp = requests.get(url, **kwargs)
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("Retry-After", _BACKOFF_BASE ** (attempt + 1)))
+                time.sleep(retry_after)
+                continue
+            if resp.status_code >= 500:
+                time.sleep(_BACKOFF_BASE ** attempt)
+                continue
+            return resp
+        except requests.RequestException as exc:
+            last_exc = exc
+            time.sleep(_BACKOFF_BASE ** attempt)
+    # All retries exhausted — raise so callers can log/skip
+    if last_exc:
+        raise last_exc
+    raise requests.RequestException(f"Failed after {_MAX_RETRIES} retries: {url}")
+
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 
@@ -136,6 +164,26 @@ def collect_rss(source, keys):
                 break
 
     return articles[:30]
+        try:
+            r = _get(url)
+            if r.status_code != 200:
+                continue
+
+            feed = feedparser.parse(r.text)
+            for entry in feed.entries[:15]:
+                articles.append({
+                    "title": entry.get("title", ""),
+                    "summary": entry.get("summary", "")[:500],
+                    "content": entry.get("content", [{}])[0].get("value", "")[:2000],
+                    "url": entry.get("link", ""),
+                    "author": entry.get("author", ""),
+                    "published_at": entry.get("published", datetime.now().isoformat()),
+                })
+            break  # Got articles, stop trying
+        except Exception:
+            continue
+
+    return articles[:10]
 
 def collect_rest(source, keys):
     """Collect from REST API"""
@@ -157,7 +205,7 @@ def collect_rest(source, keys):
     try:
         if name == "newsapi_org":
             url = f"{base_url}/everything?q=oil+price+OR+stock+market+OR+breaking+news&language=en&sortBy=publishedAt&apiKey={api_key}"
-            r = requests.get(url, timeout=15)
+            r = _get(url)
             if r.status_code == 200:
                 data = r.json()
                 for article in data.get("articles", [])[:15]:
@@ -172,7 +220,7 @@ def collect_rest(source, keys):
 
         elif name == "mediastack":
             url = f"{base_url}/news?access_key={api_key}&categories=business,science,technology&languages=en"
-            r = requests.get(url, timeout=15)
+            r = _get(url)
             if r.status_code == 200:
                 data = r.json()
                 for article in data.get("data", [])[:15]:
@@ -187,7 +235,7 @@ def collect_rest(source, keys):
 
         elif name == "finnhub":
             url = f"{base_url}/news?token={api_key}&category=general"
-            r = requests.get(url, timeout=15)
+            r = _get(url)
             if r.status_code == 200:
                 data = r.json()
                 for item in data[:15]:
@@ -202,7 +250,7 @@ def collect_rest(source, keys):
 
         elif name == "alpha_vantage":
             url = f"{base_url}?function=NEWS_SENTIMENT&apikey={api_key}&limit=20"
-            r = requests.get(url, timeout=15)
+            r = _get(url)
             if r.status_code == 200:
                 data = r.json()
                 for item in data.get("feed", [])[:15]:
