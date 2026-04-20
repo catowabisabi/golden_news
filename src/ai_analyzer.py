@@ -169,7 +169,7 @@ def _save_results(db, results, title_map):
             signal.get("ai_model", "unknown"),
         ))
         db.execute("""
-            UPDATE news_articles SET is_analyzed=1, is_trading_signal=1 WHERE id=?
+            UPDATE news_articles SET is_analyzed=1, is_trading_signal=1, is_outdated=0 WHERE id=?
         """, (article_id,))
 
         conf = int(signal.get("confidence", 0) * 100)

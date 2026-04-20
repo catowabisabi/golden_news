@@ -259,7 +259,7 @@ def get_db():
 
 
 def get_latest_articles(limit=100, source=None, asset=None, sort="newest"):
-    conditions = ["a.is_analyzed = 1", "a.is_outdated = 0"]
+    conditions = ["a.is_analyzed = 1", "(a.is_outdated = 0 OR a.is_trading_signal = 1)"]
     params: list = []
     if source:
         conditions.append("s.display_name = ?")
