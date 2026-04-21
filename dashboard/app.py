@@ -42,6 +42,7 @@ def _load_env_var(key: str) -> str:
 
 
 PAUSE_PASSWORD = _load_env_var("PAUSE_PASSWORD")
+print(f"[startup] PAUSE_PASSWORD loaded: {'(set, len=%d)' % len(PAUSE_PASSWORD) if PAUSE_PASSWORD else '(EMPTY — check .env)'}", flush=True)
 _paused = False
 _current_analyzer_proc = None  # tracked so pause can kill it mid-run
 
