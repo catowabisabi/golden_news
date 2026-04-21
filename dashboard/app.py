@@ -20,6 +20,10 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from log_config import get_logger
+
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 DASHBOARD_DIR = Path(__file__).parent
@@ -41,8 +45,11 @@ def _load_env_var(key: str) -> str:
     return val
 
 
+_app_log = get_logger("app")
+
 PAUSE_PASSWORD = _load_env_var("PAUSE_PASSWORD")
-print(f"[startup] PAUSE_PASSWORD loaded: {'(set, len=%d)' % len(PAUSE_PASSWORD) if PAUSE_PASSWORD else '(EMPTY — check .env)'}", flush=True)
+_app_log.info("[startup] PAUSE_PASSWORD loaded: %s",
+              "(set, len=%d)" % len(PAUSE_PASSWORD) if PAUSE_PASSWORD else "(EMPTY — check .env)")
 _paused = False
 _current_analyzer_proc = None  # tracked so pause can kill it mid-run
 
@@ -61,12 +68,16 @@ _sched = {
 _pipeline_logs: deque = deque(maxlen=300)  # circular buffer, last 300 lines
 
 
+_LOG_LEVEL_MAP = {"info": 20, "warn": 30, "error": 40}  # logging.INFO/WARNING/ERROR
+
+
 def _log(level: str, msg: str):
     _pipeline_logs.append({
         "t": datetime.now(timezone.utc).isoformat(),
         "level": level,   # info | warn | error
         "msg": msg,
     })
+    _app_log.log(_LOG_LEVEL_MAP.get(level, 20), msg)
 
 
 def _build_env():
@@ -609,6 +620,6 @@ if __name__ == "__main__":
     _flush_backlog()  # clear any stale backlog from previous session on startup
     sched_thread = threading.Thread(target=_scheduler_loop, daemon=True)
     sched_thread.start()
-    print(f"Golden News dashboard → http://localhost:8050")
-    print(f"Auto-fetching every {FETCH_INTERVAL_SEC // 60} minutes")
+    _app_log.info("Golden News dashboard → http://localhost:8050")
+    _app_log.info("Auto-fetching every %d minutes", FETCH_INTERVAL_SEC // 60)
     server.run(host="0.0.0.0", port=8050, debug=False)

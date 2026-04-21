@@ -30,6 +30,8 @@ Thumbs.db
 
 # Logs
 *.log
+logs/*.log
+logs/*.log.*
 
 # Database
 *.db

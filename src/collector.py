@@ -12,6 +12,10 @@ from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from log_config import get_logger
+
+log = get_logger("collector")
+
 _MAX_RETRIES = 3
 _BACKOFF_BASE = 2  # seconds
 
@@ -245,7 +249,7 @@ def collect_rest(source, keys):
                     })
 
     except Exception as e:
-        print(f"      Error collecting {name}: {e}")
+        log.error("Error collecting %s: %s", name, e)
 
     return articles
 
@@ -265,8 +269,7 @@ def collect_source(source_id, source, keys):
 
 def collect_all():
     """Collect from all working sources"""
-    print("📰 Golden News Collector")
-    print("=" * 50)
+    log.info("Golden News Collector starting")
 
     db = get_db()
     keys = get_api_keys()
@@ -279,7 +282,7 @@ def collect_all():
     sources = cursor.fetchall()
     source_map = {row[0]: dict(zip(cols, row)) for row in sources}
 
-    print(f"Collecting from {len(source_map)} working sources...\n")
+    log.info("Collecting from %d working sources", len(source_map))
 
     all_results = []
     with ThreadPoolExecutor(max_workers=8) as executor:
@@ -289,18 +292,16 @@ def collect_all():
         }
         for future in as_completed(futures):
             sid, name, articles = future.result()
-            print(f"  {name}: {len(articles)} articles")
+            log.info("  %s: %d articles", name, len(articles))
             all_results.append((sid, articles))
 
-            # Log request
             db.execute("""
                 INSERT INTO api_request_log
                 (source_id, status_code, articles_fetched, requested_at)
                 VALUES (?, ?, ?, datetime('now'))
             """, (sid, 200 if articles else 204, len(articles)))
 
-    # Save articles to database
-    print("\n💾 Saving articles...")
+    log.info("Saving articles to database...")
     saved = 0
     for source_id, articles in all_results:
         for article in articles:
@@ -325,7 +326,7 @@ def collect_all():
 
     db.commit()
     db.close()
-    print(f"\n🎉 Collected {saved} new articles!")
+    log.info("Collected %d new articles", saved)
 
     return saved
 
