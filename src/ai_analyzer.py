@@ -10,7 +10,6 @@ import json
 import os
 import time
 import threading
-import anthropic
 import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -66,15 +65,12 @@ Rules:
 """
 
 
-def _make_client():
-    # connect_timeout=10s: fail fast if server unreachable
-    # read_timeout=None: no limit once streaming starts — tokens arrive incrementally
-    return anthropic.Anthropic(
-        base_url="https://api.minimax.io/anthropic",
-        api_key=MINIMAX_CHAT_KEY,
-        timeout=httpx.Timeout(connect=10.0, read=None, write=10.0, pool=5.0),
-    )
-
+_MINIMAX_URL = "https://api.minimax.io/anthropic/v1/messages"
+_MINIMAX_HEADERS = {
+    "x-api-key": MINIMAX_CHAT_KEY,
+    "anthropic-version": "2023-06-01",
+    "content-type": "application/json",
+}
 
 _SENTINEL_EMPTY = "EMPTY"    # article has no text — mark analyzed, no signal
 _SENTINEL_ERROR = "ERROR"    # API call failed — do NOT mark analyzed, retry next run
@@ -89,18 +85,27 @@ def _analyze_one(article_id, title, summary, content):
     if not article_text:
         return article_id, _SENTINEL_EMPTY
 
-    client = _make_client()
     user_prompt = f"Title: {title}\n\nContent: {article_text[:2000]}"
+    payload = {
+        "model": "MiniMax-M2.7",
+        "max_tokens": 800,
+        "system": SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": user_prompt}],
+    }
 
-    for attempt in range(2):  # 1 retry after 15-min cooldown on 429
+    for attempt in range(2):  # 1 retry after 1-hour cooldown on 429
         try:
-            with client.messages.stream(
-                model="MiniMax-M2.7",
-                max_tokens=800,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_prompt}],
-            ) as stream:
-                text = stream.get_final_text()
+            resp = httpx.post(
+                _MINIMAX_URL,
+                headers=_MINIMAX_HEADERS,
+                json=payload,
+                timeout=httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=5.0),
+            )
+            if resp.status_code == 429:
+                raise RuntimeError("429 rate_limit")
+            resp.raise_for_status()
+            data = resp.json()
+            text = data["content"][0]["text"]
 
             start = text.find("{")
             end = text.rfind("}") + 1
