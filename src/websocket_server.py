@@ -13,6 +13,10 @@ from datetime import datetime, timedelta
 import websockets
 from websockets.server import serve
 
+from log_config import get_logger
+
+log = get_logger("websocket")
+
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 
@@ -41,12 +45,12 @@ class NewsBroadcaster:
 
         async with self.lock:
             self.clients.add(websocket)
-        print(f"✅ Client connected. Total: {len(self.clients)}")
+        log.info("Client connected. Total: %d", len(self.clients))
 
     async def unregister(self, websocket):
         async with self.lock:
             self.clients.discard(websocket)
-        print(f"👋 Client disconnected. Total: {len(self.clients)}")
+        log.info("Client disconnected. Total: %d", len(self.clients))
 
     async def broadcast(self, message):
         if not self.clients:
@@ -253,15 +257,8 @@ async def poll_database(broadcaster, interval=15):
 
 
 async def main(port=8765):
-    print(f"🌐 Starting Golden News WebSocket Server on port {port}...")
-    print(f"📊 Connect via: ws://localhost:{port}")
-    print("\nAvailable commands:")
-    print("  ping              - Health check")
-    print("  get_latest        - Get latest articles")
-    print("  get_signals       - Get active trading signals")
-    print("  get_status        - Get API status")
-    print("  subscribe         - Subscribe to category updates")
-    print()
+    log.info("Starting Golden News WebSocket Server on port %d", port)
+    log.info("Connect via: ws://localhost:%d", port)
 
     # Start database poller
     poller = asyncio.create_task(poll_database(broadcaster, interval=15))
@@ -276,4 +273,4 @@ if __name__ == "__main__":
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
         asyncio.run(main(port))
     except KeyboardInterrupt:
-        print("\n👋 Server stopped")
+        log.info("Server stopped")

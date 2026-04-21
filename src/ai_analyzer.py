@@ -14,6 +14,10 @@ import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from log_config import get_logger
+
+log = get_logger("analyzer")
+
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 
@@ -119,8 +123,7 @@ def _analyze_one(article_id, title, summary, content):
                             or (block.get("message") or {}).get("content")
                             or "")
             if not text:
-                # Last resort: dump entire response for one-time diagnosis
-                print(f"      [warn] unexpected response shape: {json.dumps(data)[:300]}")
+                log.warning("[warn] unexpected response shape: %s", json.dumps(data)[:300])
                 return article_id, _SENTINEL_EMPTY
 
             start = text.find("{")
@@ -135,12 +138,12 @@ def _analyze_one(article_id, title, summary, content):
             err_str = str(e)
             if "429" in err_str or "rate_limit" in err_str.lower():
                 if attempt == 0:
-                    print(f"      [429] {title[:40]}: server overloaded, waiting 1 hour...")
+                    log.warning("[429] %s: server overloaded, waiting 1 hour...", title[:40])
                     time.sleep(60 * 60)
                     continue
-                print(f"      [429] {title[:40]}: still overloaded after cooldown, skipping")
+                log.warning("[429] %s: still overloaded after cooldown, skipping", title[:40])
                 return article_id, _SENTINEL_ERROR
-            print(f"      [err] {title[:40]}: {e}")
+            log.error("[err] %s: %s", title[:40], e)
             return article_id, _SENTINEL_ERROR
 
     return article_id, _SENTINEL_ERROR
@@ -162,7 +165,7 @@ def _save_results(db, results, title_map):
 
         if signal.get("signal_type") == "none":
             db.execute("UPDATE news_articles SET is_analyzed=1 WHERE id=?", (article_id,))
-            print(f"   ⏭  {title[:55]}")
+            log.debug("skip (non-trading): %s", title[:55])
             continue
 
         direction = signal.get("direction", "neutral")
@@ -195,7 +198,8 @@ def _save_results(db, results, title_map):
 
         conf = int(signal.get("confidence", 0) * 100)
         ticker = signal.get("ticker", "")
-        print(f"   ✅ {direction.upper():7} {signal.get('asset_class',''):12} {conf:3}% {ticker:6}  {title[:40]}")
+        log.info("signal: %-7s %-12s %3d%% %-6s %s",
+                 direction.upper(), signal.get("asset_class", ""), conf, ticker, title[:40])
         saved += 1
 
     db.commit()
@@ -246,13 +250,12 @@ def _deduplicate(db):
             dup_ids,
         )
         db.commit()
-        print(f"   Dedup: skipped {len(dup_ids)} near-duplicate articles")
+        log.info("Dedup: skipped %d near-duplicate articles", len(dup_ids))
     return len(dup_ids)
 
 
 def process_unanalyzed_articles():
-    print("Golden News AI Analyzer")
-    print("=" * 50)
+    log.info("Golden News AI Analyzer starting")
 
     db = sqlite3.connect(DB_PATH)
     _deduplicate(db)  # remove near-duplicates before analysis
@@ -272,11 +275,11 @@ def process_unanalyzed_articles():
     articles = cursor.fetchall()
 
     if not articles:
-        print("   No new articles to analyze")
+        log.info("No new articles to analyze")
         db.close()
         return 0
 
-    print(f"   Analyzing {len(articles)} articles with {MAX_WORKERS} workers...\n")
+    log.info("Analyzing %d articles with %d workers", len(articles), MAX_WORKERS)
     title_map = {row[0]: row[1] for row in articles}
 
     total_saved = 0
@@ -294,10 +297,11 @@ def process_unanalyzed_articles():
             total_errors += errors
             done += 1
             if done % 50 == 0:
-                print(f"   ... {done}/{len(articles)} done")
+                log.info("... %d/%d done", done, len(articles))
 
     db.close()
-    print(f"\nDone — {total_saved} signals saved from {len(articles)} articles ({total_errors} API errors, will retry).")
+    log.info("Done — %d signals saved from %d articles (%d API errors, will retry)",
+             total_saved, len(articles), total_errors)
     return total_saved
 
 
