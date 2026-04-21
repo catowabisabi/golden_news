@@ -105,7 +105,23 @@ def _analyze_one(article_id, title, summary, content):
                 raise RuntimeError("429 rate_limit")
             resp.raise_for_status()
             data = resp.json()
-            text = data["content"][0]["text"]
+
+            # Extract text — handle both Anthropic-standard and MiniMax variants
+            text = ""
+            content = data.get("content") or data.get("choices") or []
+            if content:
+                block = content[0]
+                if isinstance(block, dict):
+                    # Anthropic format: {"type":"text","text":"..."}
+                    # MiniMax/OpenAI format: {"message":{"content":"..."}} or {"text":"..."}
+                    text = (block.get("text")
+                            or block.get("value")
+                            or (block.get("message") or {}).get("content")
+                            or "")
+            if not text:
+                # Last resort: dump entire response for one-time diagnosis
+                print(f"      [warn] unexpected response shape: {json.dumps(data)[:300]}")
+                return article_id, _SENTINEL_EMPTY
 
             start = text.find("{")
             end = text.rfind("}") + 1
