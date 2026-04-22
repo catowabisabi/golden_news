@@ -110,20 +110,16 @@ def _analyze_one(article_id, title, summary, content):
             resp.raise_for_status()
             data = resp.json()
 
-            # Extract text — handle both Anthropic-standard and MiniMax variants
+            # MiniMax-M2.7 is a reasoning model: content = [{"thinking":"..."}, {"type":"text","text":"..."}]
+            # Skip thinking blocks; find the first block with type=="text"
             text = ""
-            content = data.get("content") or data.get("choices") or []
-            if content:
-                block = content[0]
-                if isinstance(block, dict):
-                    # Anthropic format: {"type":"text","text":"..."}
-                    # MiniMax/OpenAI format: {"message":{"content":"..."}} or {"text":"..."}
-                    text = (block.get("text")
-                            or block.get("value")
-                            or (block.get("message") or {}).get("content")
-                            or "")
+            for block in data.get("content") or []:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "text" and block.get("text"):
+                    text = block["text"]
+                    break
             if not text:
-                log.warning("[warn] unexpected response shape: %s", json.dumps(data)[:300])
                 return article_id, _SENTINEL_EMPTY
 
             start = text.find("{")
