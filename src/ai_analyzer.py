@@ -113,15 +113,20 @@ def _analyze_one(article_id, title, summary, content):
             # Extract text — handle both Anthropic-standard and MiniMax variants
             text = ""
             content = data.get("content") or data.get("choices") or []
-            if content:
-                block = content[0]
-                if isinstance(block, dict):
-                    # Anthropic format: {"type":"text","text":"..."}
-                    # MiniMax/OpenAI format: {"message":{"content":"..."}} or {"text":"..."}
-                    text = (block.get("text")
-                            or block.get("value")
-                            or (block.get("message") or {}).get("content")
-                            or "")
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                # Skip pure thinking blocks (MiniMax extended-thinking)
+                if set(block.keys()) == {"thinking"}:
+                    continue
+                # Anthropic format: {"type":"text","text":"..."}
+                # MiniMax/OpenAI format: {"message":{"content":"..."}} or {"text":"..."}
+                text = (block.get("text")
+                        or block.get("value")
+                        or (block.get("message") or {}).get("content")
+                        or "")
+                if text:
+                    break
             if not text:
                 log.warning("[warn] unexpected response shape: %s", json.dumps(data)[:300])
                 return article_id, _SENTINEL_EMPTY
