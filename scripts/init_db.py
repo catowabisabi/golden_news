@@ -13,6 +13,22 @@ DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 SCHEMA_PATH = PROJECT_ROOT / "database" / "schema.sql"
 SOURCES_PATH = PROJECT_ROOT / "config" / "news_sources.json"
 
+_MIGRATIONS = [
+    # (table, column, definition)  — applied once if column is missing
+    ("news_articles", "is_outdated", "INTEGER NOT NULL DEFAULT 0"),
+]
+
+
+def migrate_database(conn: sqlite3.Connection) -> None:
+    """Apply any schema columns added after initial creation."""
+    for table, column, definition in _MIGRATIONS:
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+            conn.commit()
+            print(f"   ✅ Migration applied: {table}.{column}")
+
+
 def init_database():
     print("🏦 Initializing Golden News Database...")
 
@@ -27,6 +43,9 @@ def init_database():
     conn.executescript(schema)
     conn.commit()
     print(f"   ✅ Database created: {DB_PATH}")
+
+    # Apply any migrations for existing databases
+    migrate_database(conn)
 
     # Seed news sources
     sources_data = json.loads(SOURCES_PATH.read_text())
