@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from log_config import get_logger
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
+DB_PATH = Path(os.environ.get("GOLDEN_NEWS_DB", str(PROJECT_ROOT / "database" / "golden_news.db")))
 DASHBOARD_DIR = Path(__file__).parent
 
 server = Flask(__name__, static_folder=None)
