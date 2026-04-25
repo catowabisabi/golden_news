@@ -60,7 +60,7 @@ def get_api_keys():
 def _fetch_rss_url(url):
     """Fetch and parse a single RSS URL. Returns list of article dicts."""
     try:
-        r = requests.get(url, timeout=15, headers={"User-Agent": "GoldenNews/1.0"})
+        r = _get(url)
         if r.status_code != 200:
             return []
         feed = feedparser.parse(r.text)
