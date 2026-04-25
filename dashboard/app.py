@@ -23,6 +23,7 @@ from flask import Flask, jsonify, request, send_from_directory
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from log_config import get_logger
+from signal_expiry import expire_signals
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
@@ -238,6 +239,15 @@ def _run_pipeline():
             _stream_subprocess("analyzer",
                 [sys.executable, str(PROJECT_ROOT / "src" / "ai_analyzer.py")],
                 env)  # no timeout for analyzer
+
+        _sched["stage"] = "expiring"
+        _log("info", "[expiry] expiring stale signals...")
+        try:
+            n_expired = expire_signals()
+            if n_expired:
+                _log("info", f"[expiry] deactivated {n_expired} stale signal(s)")
+        except Exception as e:
+            _log("warn", f"[expiry] error: {e}")
 
         _sched["status"] = "idle"
         _sched["stage"] = ""
