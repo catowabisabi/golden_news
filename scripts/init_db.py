@@ -13,6 +13,16 @@ DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 SCHEMA_PATH = PROJECT_ROOT / "database" / "schema.sql"
 SOURCES_PATH = PROJECT_ROOT / "config" / "news_sources.json"
 
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(news_articles)").fetchall()}
+    if "is_outdated" not in existing:
+        conn.execute(
+            "ALTER TABLE news_articles ADD COLUMN is_outdated INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.commit()
+        print("   ✅ Migration: added news_articles.is_outdated")
+
+
 def init_database():
     print("🏦 Initializing Golden News Database...")
 
@@ -27,6 +37,9 @@ def init_database():
     conn.executescript(schema)
     conn.commit()
     print(f"   ✅ Database created: {DB_PATH}")
+
+    # Run incremental migrations for existing databases
+    _apply_migrations(conn)
 
     # Seed news sources
     sources_data = json.loads(SOURCES_PATH.read_text())

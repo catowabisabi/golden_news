@@ -458,6 +458,40 @@ body::before {
   #last-update { display: none; }
 }
 
+/* ── Source Health panel ── */
+.sources-panel {
+  margin: 24px 28px 0;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+.src-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 5px;
+  padding: 4px 14px 14px;
+}
+.src-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 11px; border-radius: 8px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.src-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.src-dot.up       { background: var(--green); box-shadow: 0 0 5px rgba(0,255,136,0.5); }
+.src-dot.down     { background: var(--red);   box-shadow: 0 0 5px rgba(255,71,87,0.5); }
+.src-dot.untested { background: var(--amber); }
+.src-name {
+  font-size: 11px; font-weight: 600; color: var(--text);
+  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.src-cat  { font-size: 9px; color: var(--muted); flex-shrink: 0; text-transform: uppercase; letter-spacing: .4px; }
+.src-arts { font-size: 10px; color: var(--cyan); font-weight: 700; flex-shrink: 0; min-width: 28px; text-align: right; }
+
 /* ── Pipeline Log panel ── */
 .log-panel {
   margin: 24px 28px 32px;
@@ -617,6 +651,20 @@ body::before {
   <div class="news-list" id="news-list"></div>
 
 </main>
+
+<div class="sources-panel">
+  <button class="log-toggle" onclick="toggleSources()">
+    <span class="chev" id="src-chev">▶</span>
+    Source Health
+    <span id="src-summary" style="margin-left:8px;font-size:10px;font-weight:400;color:var(--muted)"></span>
+    <span id="src-last" style="margin-left:auto;font-size:10px;font-weight:400;color:var(--muted)"></span>
+  </button>
+  <div class="log-body" id="src-body">
+    <div class="src-grid" id="src-grid">
+      <span style="color:var(--muted);font-size:12px;padding:6px 0">Loading…</span>
+    </div>
+  </div>
+</div>
 
 <div class="log-panel">
   <button class="log-toggle" onclick="toggleLog()">
@@ -1195,9 +1243,62 @@ setInterval(() => {
 
 window.addEventListener('resize', () => chart && chart.resize());
 
+// ── Source Health ─────────────────────────────────────────────────────────────
+let _sourcesOpen = false;
+let _lastSources = [];
+
+function toggleSources() {
+  _sourcesOpen = !_sourcesOpen;
+  document.getElementById('src-body').classList.toggle('open', _sourcesOpen);
+  document.getElementById('src-chev').classList.toggle('open', _sourcesOpen);
+  if (_sourcesOpen) _renderSourceGrid(_lastSources);
+}
+
+async function fetchSourceStatus() {
+  try {
+    const r = await fetch(API_BASE + '/api/source-status');
+    if (!r.ok) return;
+    _lastSources = await r.json();
+    _renderSourceSummary(_lastSources);
+    if (_sourcesOpen) _renderSourceGrid(_lastSources);
+    document.getElementById('src-last').textContent =
+      'updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {}
+}
+
+function _renderSourceSummary(sources) {
+  const up   = sources.filter(s => s.status === 'up').length;
+  const down = sources.filter(s => s.status === 'down').length;
+  document.getElementById('src-summary').innerHTML =
+    `<span style="color:var(--green)">${up} up</span>` +
+    (down ? ` · <span style="color:var(--red)">${down} down</span>` : '') +
+    ` · ${sources.length} total`;
+}
+
+function _renderSourceGrid(sources) {
+  const grid = document.getElementById('src-grid');
+  if (!sources.length) {
+    grid.innerHTML = '<span style="color:var(--muted);font-size:12px">No sources configured.</span>';
+    return;
+  }
+  grid.innerHTML = sources.map(s => {
+    const arts = s.articles_last_24h || 0;
+    return `
+      <div class="src-row">
+        <span class="src-dot ${esc(s.status)}"></span>
+        <span class="src-name" title="${esc(s.display_name)}">${esc(s.display_name)}</span>
+        <span class="src-cat">${esc(s.category || '')}</span>
+        <span class="src-arts" title="${arts} articles (24h)">${arts > 0 ? arts : '—'}</span>
+      </div>`;
+  }).join('');
+}
+
+setInterval(fetchSourceStatus, 120000);
+
 // Init
 loadSources();
 fetchAll();
+fetchSourceStatus();
 setInterval(fetchAll, REFRESH_MS);
 </script>
 </body>
