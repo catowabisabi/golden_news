@@ -13,6 +13,17 @@ DB_PATH = PROJECT_ROOT / "database" / "golden_news.db"
 SCHEMA_PATH = PROJECT_ROOT / "database" / "schema.sql"
 SOURCES_PATH = PROJECT_ROOT / "config" / "news_sources.json"
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns that were added after initial schema creation."""
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(news_articles)").fetchall()}
+    if "is_outdated" not in existing:
+        conn.execute(
+            "ALTER TABLE news_articles ADD COLUMN is_outdated INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.commit()
+        print("   ✅ Migration: added news_articles.is_outdated")
+
+
 def init_database():
     print("🏦 Initializing Golden News Database...")
 
@@ -70,6 +81,7 @@ def init_database():
     conn.commit()
     print("   ✅ Default preferences set")
 
+    _migrate(conn)
     conn.close()
     print("\n🎉 Database initialization complete!")
 
